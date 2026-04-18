@@ -3,84 +3,67 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import Navbar from '../../components/Navbar';
 
-export default function ServicePanelPage() {
+export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
-  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [user, setUser] = useState(null);
   const [registrations, setRegistrations] = useState([]);
+  const [centers, setCenters] = useState([]);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [selectedCard, setSelectedCard] = useState(null);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
+  const [metrics, setMetrics] = useState({ total: 0, nova: 0, work: 0, done: 0 });
   const chatRef = useRef(null);
 
   useEffect(() => {
-    const s = sessionStorage.getItem('hecht_service');
-    if (s) {
-      try {
-        const parsed = JSON.parse(s);
-        setUser(parsed);
-        setLoggedIn(true);
-      } catch (e) {}
-    }
+    const s = sessionStorage.getItem('hecht_admin');
+    if (s === 'true') setLoggedIn(true);
   }, []);
 
   useEffect(() => {
-    if (loggedIn && user) loadData();
-  }, [loggedIn, user]);
+    if (loggedIn) {
+      loadData();
+      loadCenters();
+    }
+  }, [loggedIn]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    setLoginError('');
-
-    const { data, error } = await supabase
-      .from('users')
-      .select('*, service_centers(city, center_name)')
-      .eq('username', username.trim())
-      .eq('active', true)
-      .eq('role', 'service_center')
-      .limit(1)
-      .single();
-
-    if (error || !data) {
-      setLoginError('Невірний логін або пароль');
-      return;
+    if (password === 'g91!m#HIU6@aJ9') {
+      sessionStorage.setItem('hecht_admin', 'true');
+      setLoggedIn(true);
+      setLoginError('');
+    } else {
+      setLoginError('Невірний пароль');
     }
-
-    // Simple password check (in production use Supabase Auth)
-    if (data.password_hash !== password) {
-      setLoginError('Невірний логін або пароль');
-      return;
-    }
-
-    const userData = {
-      id: data.id,
-      username: data.username,
-      service_center_id: data.service_center_id,
-      center_name: data.service_centers?.center_name || 'Сервісний центр',
-      city: data.service_centers?.city || ''
-    };
-    sessionStorage.setItem('hecht_service', JSON.stringify(userData));
-    setUser(userData);
-    setLoggedIn(true);
   };
 
   const loadData = async () => {
-    if (!user?.service_center_id) return;
     const { data } = await supabase
       .from('warranty_registrations')
-      .select('*, comment_list:comments(id)')
-      .eq('service_center_id', user.service_center_id)
+      .select('*, service_centers(city, center_name), comment_list:comments(id)')
       .order('registration_date', { ascending: false });
 
     if (data) {
-      setRegistrations(data.map(r => ({
+      const withCounts = data.map(r => ({
         ...r,
-        comment_count: r.comment_list ? r.comment_list.length : 0
-      })));
+        comment_count: r.comment_list ? r.comment_list.length : 0,
+      }));
+      setRegistrations(withCounts);
+      setMetrics({
+        total: withCounts.length,
+        nova: withCounts.filter(r => r.status === 'Нова').length,
+        work: withCounts.filter(r => r.status === 'В роботі').length,
+        done: withCounts.filter(r => r.status === 'Видана' || r.status === 'Ремонт завершено').length,
+      });
     }
+  };
+
+  const loadCenters = async () => {
+    const { data } = await supabase.from('service_centers').select('*').order('city');
+    if (data) setCenters(data);
   };
 
   const loadComments = async (warrantyId) => {
@@ -99,12 +82,11 @@ export default function ServicePanelPage() {
   };
 
   const sendComment = async () => {
-    if (!newComment.trim() || !selectedCard || !user) return;
-    const authorName = 'Сервіс — ' + (user.center_name || 'СЦ');
+    if (!newComment.trim() || !selectedCard) return;
     await supabase.from('comments').insert({
       warranty_id: selectedCard.id,
-      author_name: authorName,
-      author_role: 'service_center',
+      author_name: 'Hecht',
+      author_role: 'admin',
       message: newComment.trim()
     });
     setNewComment('');
@@ -114,18 +96,25 @@ export default function ServicePanelPage() {
   };
 
   const updateStatus = async (id, status) => {
-    await supabase.from('warranty_registrations')
-      .update({ status, last_updated: new Date().toISOString() })
-      .eq('id', id)
-      .eq('service_center_id', user.service_center_id);
+    await supabase.from('warranty_registrations').update({ status, last_updated: new Date().toISOString() }).eq('id', id);
     if (selectedCard && selectedCard.id === id) setSelectedCard({ ...selectedCard, status });
+    await loadData();
+  };
+
+  const assignCenter = async (id, centerId) => {
+    await supabase.from('warranty_registrations').update({
+      service_center_id: centerId || null,
+      last_updated: new Date().toISOString()
+    }).eq('id', id);
     await loadData();
   };
 
   const filtered = registrations.filter(r => {
     const q = search.toLowerCase();
-    return !q || r.serial_number?.toLowerCase().includes(q) || r.model?.toLowerCase().includes(q)
-      || r.first_name?.toLowerCase().includes(q) || r.last_name?.toLowerCase().includes(q);
+    const matchSearch = !q || r.first_name?.toLowerCase().includes(q) || r.last_name?.toLowerCase().includes(q)
+      || r.serial_number?.toLowerCase().includes(q) || r.model?.toLowerCase().includes(q) || r.cert_number?.toLowerCase().includes(q);
+    const matchStatus = !statusFilter || r.status === statusFilter;
+    return matchSearch && matchStatus;
   });
 
   const statusClass = (s) => {
@@ -148,7 +137,6 @@ export default function ServicePanelPage() {
       dt.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
   };
 
-  // LOGIN
   if (!loggedIn) {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -158,90 +146,93 @@ export default function ServicePanelPage() {
           boxShadow: 'var(--shadow)', animation: 'fadeUp 0.5s ease both'
         }}>
           <div style={{
-            width: 48, height: 48, background: 'var(--blue)', borderRadius: 12,
+            width: 48, height: 48, background: 'var(--red)', borderRadius: 12,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 24px', fontFamily: "'Space Mono', monospace",
             color: '#fff', fontWeight: 700, fontSize: 22
-          }}>S</div>
+          }}>H</div>
           <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
-            Панель сервісного центру
+            Адмін-панель
           </h1>
-          <p style={{ fontSize: 14, color: 'var(--text3)', marginBottom: 28 }}>Введіть логін та пароль</p>
-
+          <p style={{ fontSize: 14, color: 'var(--text3)', marginBottom: 28 }}>Введіть пароль для входу</p>
           {loginError && (
             <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: 'var(--red)' }}>
               {loginError}
             </div>
           )}
-
-          <input type="text" value={username} onChange={e => setUsername(e.target.value)}
-            placeholder="Логін" autoFocus
-            style={{
-              width: '100%', padding: '14px 16px', fontSize: 16, background: 'var(--input)',
-              border: '1px solid var(--border)', borderRadius: 14, color: 'var(--text)',
-              outline: 'none', marginBottom: 12, boxSizing: 'border-box', fontFamily: "'Inter', sans-serif"
-            }} />
           <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-            placeholder="Пароль"
+            placeholder="Пароль" autoFocus
             style={{
               width: '100%', padding: '14px 16px', fontSize: 16, background: 'var(--input)',
               border: '1px solid var(--border)', borderRadius: 14, color: 'var(--text)',
               outline: 'none', marginBottom: 16, boxSizing: 'border-box', fontFamily: "'Inter', sans-serif"
             }} />
           <button type="submit" style={{
-            width: '100%', padding: 14, background: 'var(--blue)', color: '#fff',
+            width: '100%', padding: 14, background: 'var(--red)', color: '#fff',
             border: 'none', borderRadius: 14, fontSize: 16, fontWeight: 600,
             cursor: 'pointer', fontFamily: "'Inter', sans-serif"
           }}>Увійти</button>
-
-          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 24 }}>
-            Адміністратор: <a href="/admin" style={{ color: 'var(--red)', textDecoration: 'none' }}>Вхід в адмін-панель</a>
-          </p>
         </form>
       </div>
     );
   }
 
-  // PANEL
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', transition: 'background 0.4s' }}>
-      <Navbar title={user?.city + ' — ' + user?.center_name} showShop={false} rightContent={
-        <button onClick={() => { sessionStorage.removeItem('hecht_service'); setLoggedIn(false); setUser(null); }} style={{
-          padding: '8px 16px', borderRadius: 10, background: 'var(--red)', color: '#fff',
-          border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'Inter', sans-serif"
-        }}>Вийти</button>
+      <Navbar title="Hecht Admin" showShop={false} rightContent={
+        <>
+          <a href="/admin/service-centers" style={{
+            padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border)',
+            background: 'var(--card)', fontSize: 13, fontWeight: 500, color: 'var(--text2)',
+            textDecoration: 'none', fontFamily: "'Inter', sans-serif"
+          }}>Сервісні центри</a>
+          <button onClick={() => { sessionStorage.removeItem('hecht_admin'); setLoggedIn(false); }} style={{
+            padding: '8px 16px', borderRadius: 10, background: 'var(--red)', color: '#fff',
+            border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'Inter', sans-serif"
+          }}>Вийти</button>
+        </>
       } />
 
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '28px 24px' }}>
-        {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
+      <div style={{ maxWidth: 1400, margin: '0 auto', padding: '28px 24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
           {[
-            { label: 'Всього заявок', value: registrations.length, color: 'var(--text)' },
-            { label: 'В роботі', value: registrations.filter(r => r.status === 'В роботі' || r.status === 'Нова').length, color: 'var(--orange)' },
-            { label: 'Завершено', value: registrations.filter(r => r.status === 'Видана' || r.status === 'Ремонт завершено').length, color: 'var(--green)' },
+            { label: 'Всього заявок', value: metrics.total, color: 'var(--text)' },
+            { label: 'Нові', value: metrics.nova, color: 'var(--orange)', dot: '#eab308', sub: 'Очікують призначення' },
+            { label: 'В роботі', value: metrics.work, color: 'var(--blue)', dot: 'var(--blue)', sub: 'У сервісних центрах' },
+            { label: 'Завершено', value: metrics.done, color: 'var(--green)', dot: 'var(--green)', sub: 'Видано / ремонт завершено' },
           ].map((m, i) => (
             <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: '22px 24px' }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>{m.label}</div>
               <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 36, fontWeight: 700, color: m.color, letterSpacing: '-0.02em' }}>{m.value}</div>
+              {m.sub && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
+                {m.dot && <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: m.dot, marginRight: 6 }} />}
+                {m.sub}
+              </div>}
             </div>
           ))}
         </div>
 
-        {/* Search */}
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 20px', marginBottom: 16 }}>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 20px', marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Пошук по серійному номеру або прізвищу..."
-            style={{ width: '100%', padding: '11px 16px', fontSize: 14, background: 'var(--input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text)', outline: 'none', fontFamily: "'Inter', sans-serif", boxSizing: 'border-box' }} />
+            placeholder="Пошук по серійному номеру, прізвищу, моделі..."
+            style={{ flex: 1, minWidth: 200, padding: '11px 16px', fontSize: 14, background: 'var(--input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text)', outline: 'none', fontFamily: "'Inter', sans-serif" }} />
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            style={{ padding: '11px 16px', fontSize: 14, background: 'var(--input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text)', fontFamily: "'Inter', sans-serif", minWidth: 160 }}>
+            <option value="">Всі статуси</option>
+            <option value="Нова">Нова</option>
+            <option value="В роботі">В роботі</option>
+            <option value="Ремонт завершено">Ремонт завершено</option>
+            <option value="Видана">Видана</option>
+          </select>
         </div>
 
-        <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12, paddingLeft: 4 }}>Заявок: {filtered.length}</div>
+        <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12, paddingLeft: 4 }}>Знайдено: {filtered.length}</div>
 
-        {/* Table */}
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow)', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200 }}>
             <thead>
               <tr style={{ background: 'var(--text)' }}>
-                {['Дата', '№ Сертифіката', 'Покупець', 'Телефон', 'Модель', 'Серійний номер', 'Статус', '💬'].map(h => (
+                {['Дата', '№ Сертифіката', 'Покупець', 'Телефон', 'Модель', 'Серійний номер', 'Статус', '💬', 'Сервісний центр'].map(h => (
                   <th key={h} style={{ padding: '14px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--bg)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -261,24 +252,30 @@ export default function ServicePanelPage() {
                     <span className={r.status === 'Нова' ? 'status-new' : ''} style={{ display: 'inline-block', padding: '5px 12px', borderRadius: 100, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', ...statusClass(r.status) }}>{r.status}</span>
                   </td>
                   <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: 13, color: 'var(--blue)' }}>{r.comment_count > 0 ? '💬 ' + r.comment_count : '—'}</td>
+                  <td style={{ padding: '13px 14px', fontSize: 12 }} onClick={e => e.stopPropagation()}>
+                    <select value={r.service_center_id || ''} onChange={e => assignCenter(r.id, e.target.value ? parseInt(e.target.value) : null)}
+                      style={{ padding: '6px 8px', fontSize: 12, background: 'var(--input)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text2)', fontFamily: "'Inter', sans-serif", maxWidth: 170 }}>
+                      <option value="">Не призначено</option>
+                      {centers.map(c => <option key={c.id} value={c.id}>{c.city} — {c.center_name}</option>)}
+                    </select>
+                  </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Поки що немає заявок</td></tr>
+                <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Нічого не знайдено</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* MODAL */}
       {selectedCard && (
         <div onClick={e => { if (e.target === e.currentTarget) setSelectedCard(null); }}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 24, maxWidth: 640, width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.2)', animation: 'fadeUp 0.3s ease' }}>
             <div style={{ padding: '28px 28px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>
-                {selectedCard.cert_number}
+                Картка — {selectedCard.cert_number}
               </h2>
               <button onClick={() => setSelectedCard(null)} style={{
                 width: 36, height: 36, borderRadius: 10, border: '1px solid var(--border)',
@@ -294,7 +291,7 @@ export default function ServicePanelPage() {
                 { label: 'Email', value: selectedCard.email || '—' },
                 { label: 'Модель', value: selectedCard.model },
                 { label: 'Серійний номер', value: selectedCard.serial_number, mono: true },
-                { label: 'Дата покупки', value: selectedCard.purchase_date || '—' },
+                { label: 'Дата реєстрації', value: formatDate(selectedCard.registration_date) },
               ].map((item, i) => (
                 <div key={i}>
                   <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{item.label}</div>
@@ -350,7 +347,7 @@ export default function ServicePanelPage() {
                   placeholder="Написати коментар..."
                   style={{ flex: 1, padding: '12px 16px', fontSize: 14, background: 'var(--input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text)', outline: 'none', fontFamily: "'Inter', sans-serif" }} />
                 <button onClick={sendComment} style={{
-                  padding: '12px 20px', background: 'var(--blue)', color: '#fff', border: 'none',
+                  padding: '12px 20px', background: 'var(--red)', color: '#fff', border: 'none',
                   borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer',
                   fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap'
                 }}>Надіслати</button>
