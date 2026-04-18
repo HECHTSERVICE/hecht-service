@@ -1,17 +1,17 @@
 :root {
-  --bg: #F5F3EF;
-  --card: rgba(255, 255, 255, 0.82);
+  --bg: #EBE7E0;
+  --card: rgba(255, 255, 255, 0.72);
   --card-solid: #FFFFFF;
   --text: #1A1A1A;
   --text2: #4A4A4A;
   --text3: #8A8A8A;
-  --border: rgba(0, 0, 0, 0.07);
-  --border-glass: rgba(255, 255, 255, 0.7);
+  --border: rgba(0, 0, 0, 0.08);
+  --border-glass: rgba(255, 255, 255, 0.5);
   --red: #E30613;
   --red-hover: #C80510;
-  --glass: rgba(255, 255, 255, 0.6);
-  --glass-b: rgba(0, 0, 0, 0.05);
-  --input: rgba(255, 255, 255, 0.6);
+  --glass: rgba(235, 231, 224, 0.65);
+  --glass-b: rgba(0, 0, 0, 0.06);
+  --input: rgba(255, 255, 255, 0.55);
   --green: #059669;
   --orange: #D97706;
   --blue: #2563EB;
@@ -25,15 +25,18 @@
   --red-border: rgba(227, 6, 19, 0.16);
   --yellow-bg: rgba(234, 179, 8, 0.1);
   --yellow-border: rgba(234, 179, 8, 0.25);
-  --shadow: 0 2px 16px rgba(0, 0, 0, 0.04), 0 1px 4px rgba(0, 0, 0, 0.03);
-  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow: 0 2px 16px rgba(0, 0, 0, 0.05), 0 1px 4px rgba(0, 0, 0, 0.04);
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.07), 0 2px 8px rgba(0, 0, 0, 0.05);
   --chat-admin: rgba(227, 6, 19, 0.07);
   --chat-service: rgba(37, 99, 235, 0.07);
+  --nav-margin: 0;
+  --nav-radius: 0;
+  --nav-width: 100%;
 }
 
 [data-theme="dark"] {
   --bg: #18181B;
-  --card: rgba(32, 32, 36, 0.75);
+  --card: rgba(32, 32, 36, 0.65);
   --card-solid: #232327;
   --text: #F0EFEC;
   --text2: #B0AFA8;
@@ -42,8 +45,8 @@
   --border-glass: rgba(255, 255, 255, 0.1);
   --red: #FF3B3B;
   --red-hover: #FF5555;
-  --glass: rgba(24, 24, 27, 0.75);
-  --glass-b: rgba(255, 255, 255, 0.06);
+  --glass: rgba(30, 30, 34, 0.7);
+  --glass-b: rgba(255, 255, 255, 0.08);
   --input: rgba(40, 40, 44, 0.8);
   --green: #34D399;
   --orange: #FBBF24;
@@ -62,6 +65,9 @@
   --shadow-glass: 0 8px 40px rgba(0, 0, 0, 0.5), 0 2px 12px rgba(0, 0, 0, 0.3);
   --chat-admin: rgba(255, 59, 59, 0.08);
   --chat-service: rgba(96, 165, 250, 0.08);
+  --nav-margin: 12px 16px 0;
+  --nav-radius: 18px;
+  --nav-width: calc(100% - 32px);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -77,7 +83,7 @@ body {
 }
 
 /* ═══════════════════════════════════════
-   LIGHT THEME: Handmade paper texture
+   LIGHT THEME: Rough paper texture
    ═══════════════════════════════════════ */
 body::before {
   content: '';
@@ -86,11 +92,11 @@ body::before {
   z-index: -2;
   background: var(--bg);
   background-image:
-    url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='paper'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)' opacity='0.03'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg width='300' height='300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='paper'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='6' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)' opacity='0.045'/%3E%3C/svg%3E");
   pointer-events: none;
 }
 
-/* Warm gradient overlay for paper feel */
+/* Warm gradient spots for paper feel */
 body::after {
   content: '';
   position: fixed;
@@ -99,13 +105,14 @@ body::after {
   opacity: 1;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(227, 180, 120, 0.04) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 80% at 80% 90%, rgba(200, 160, 100, 0.03) 0%, transparent 60%);
+    radial-gradient(ellipse 70% 50% at 15% 10%, rgba(200, 160, 90, 0.06) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 70% at 85% 85%, rgba(180, 140, 80, 0.05) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(160, 130, 70, 0.03) 0%, transparent 50%);
   transition: opacity 0.6s ease;
 }
 
 /* ═══════════════════════════════════════
-   DARK THEME: Subtle color blobs + no paper
+   DARK THEME: Color blobs, no paper
    ═══════════════════════════════════════ */
 [data-theme="dark"] body::before {
   background: var(--bg);
@@ -114,10 +121,42 @@ body::after {
 
 [data-theme="dark"] body::after {
   background:
-    radial-gradient(ellipse 55% 45% at 10% 15%, rgba(99, 102, 241, 0.07) 0%, transparent 65%),
-    radial-gradient(ellipse 50% 55% at 90% 80%, rgba(239, 68, 68, 0.06) 0%, transparent 65%),
-    radial-gradient(ellipse 45% 50% at 50% 45%, rgba(16, 185, 129, 0.05) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 35% at 70% 20%, rgba(251, 191, 36, 0.04) 0%, transparent 55%);
+    radial-gradient(ellipse 55% 45% at 8% 12%, rgba(99, 102, 241, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 55% at 92% 82%, rgba(239, 68, 68, 0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 45% 50% at 45% 40%, rgba(16, 185, 129, 0.06) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 35% at 75% 18%, rgba(251, 191, 36, 0.05) 0%, transparent 50%);
+}
+
+/* ═══════════════════════════════════════
+   FLOATING GLASS NAVBAR (dark theme)
+   ═══════════════════════════════════════ */
+header {
+  margin: var(--nav-margin) !important;
+  border-radius: var(--nav-radius) !important;
+  width: var(--nav-width) !important;
+  left: 0;
+  right: 0;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  transition: all 0.4s ease !important;
+}
+
+[data-theme="dark"] header {
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(24px) saturate(1.4) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.4) !important;
+}
+
+/* ═══════════════════════════════════════
+   CARDS — glass effect in dark theme
+   ═══════════════════════════════════════ */
+[data-theme="dark"] form,
+[data-theme="dark"] .glass-card {
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 /* ═══════════════════════════════════════
@@ -137,19 +176,6 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ═══════════════════════════════════════
-   GLASS CARD
-   ═══════════════════════════════════════ */
-.glass-card {
-  background: var(--card);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--border-glass);
-  border-radius: 20px;
-  box-shadow: var(--shadow-glass);
-  transition: all 0.4s ease;
-}
-
-/* ═══════════════════════════════════════
    STATUS BADGES
    ═══════════════════════════════════════ */
 [data-theme="dark"] .status-new {
@@ -157,7 +183,18 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ═══════════════════════════════════════
-   SCROLLBAR (subtle)
+   TABLE (dark theme readability)
+   ═══════════════════════════════════════ */
+[data-theme="dark"] table tbody tr {
+  border-bottom-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme="dark"] table thead tr {
+  background: #2A2A2E !important;
+}
+
+/* ═══════════════════════════════════════
+   SCROLLBAR
    ═══════════════════════════════════════ */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -173,7 +210,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ═══════════════════════════════════════
-   LINK HOVER
+   LINKS
    ═══════════════════════════════════════ */
 a { transition: color 0.2s ease, opacity 0.2s ease; }
 a:hover { opacity: 0.8; }
@@ -187,19 +224,13 @@ a:hover { opacity: 0.8; }
 }
 
 /* ═══════════════════════════════════════
-   TABLE ROWS (dark theme readability)
-   ═══════════════════════════════════════ */
-[data-theme="dark"] table tbody tr {
-  border-bottom-color: rgba(255, 255, 255, 0.06) !important;
-}
-
-[data-theme="dark"] table thead tr {
-  background: #2A2A2E !important;
-}
-
-/* ═══════════════════════════════════════
    RESPONSIVE
    ═══════════════════════════════════════ */
 @media (max-width: 640px) {
   body { font-size: 14px; }
+  [data-theme="dark"] {
+    --nav-margin: 8px 8px 0;
+    --nav-width: calc(100% - 16px);
+    --nav-radius: 14px;
+  }
 }
