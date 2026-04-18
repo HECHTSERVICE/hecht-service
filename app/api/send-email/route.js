@@ -55,7 +55,7 @@ export async function POST(request) {
           </p>
         </div>
         <div style="text-align:center;">
-          <a href="https://hecht-service.com.ua" style="display:inline-block;padding:12px 28px;background:#E30613;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">Завантажити PDF-сертифікат</a>
+          <a href="https://hecht-service.com.ua" style="display:inline-block;padding:12px 28px;background:#E30613;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">Перейти на сайт Hecht Service</a>
         </div>
       </div>
       <div style="background:#111;padding:16px 24px;text-align:center;">
