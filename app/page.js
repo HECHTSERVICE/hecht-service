@@ -14,6 +14,7 @@ export default function HomePage() {
   const [error, setError] = useState('');
   const [focused, setFocused] = useState(null);
   const [fileName, setFileName] = useState('');
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const generateCertNumber = () => {
     const now = new Date();
@@ -25,33 +26,147 @@ export default function HomePage() {
       + String(now.getSeconds()).padStart(2, '0');
   };
 
+  const generatePDF = async (cert) => {
+    setPdfLoading(true);
+    try {
+      const { jsPDF } = await import('jspdf');
+      const QRCode = (await import('qrcode')).default;
+
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const w = 210;
+
+      // Background
+      doc.setFillColor(248, 247, 244);
+      doc.rect(0, 0, w, 297, 'F');
+
+      // Red header bar
+      doc.setFillColor(227, 6, 19);
+      doc.rect(0, 0, w, 8, 'F');
+
+      // HECHT text logo
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(28);
+      doc.setTextColor(227, 6, 19);
+      doc.text('HECHT', w / 2, 30, { align: 'center' });
+
+      doc.setFontSize(9);
+      doc.setTextColor(150, 150, 150);
+      doc.text('made for garden', w / 2, 36, { align: 'center' });
+
+      // Title
+      doc.setFontSize(20);
+      doc.setTextColor(17, 17, 17);
+      doc.text('ГАРАНТІЙНИЙ СЕРТИФІКАТ', w / 2, 52, { align: 'center' });
+
+      // Certificate number
+      doc.setFillColor(227, 6, 19, 0.08);
+      doc.roundedRect(55, 57, 100, 14, 4, 4, 'F');
+      doc.setFontSize(14);
+      doc.setTextColor(227, 6, 19);
+      doc.setFont('helvetica', 'bold');
+      doc.text(cert, w / 2, 66, { align: 'center' });
+
+      // Divider
+      doc.setDrawColor(220, 220, 220);
+      doc.line(30, 78, 180, 78);
+
+      // Info section
+      const startY = 88;
+      const labelX = 32;
+      const valueX = 85;
+      const lineH = 10;
+
+      const fields = [
+        { label: 'Покупець:', value: formData.firstName + ' ' + formData.lastName },
+        { label: 'Телефон:', value: formData.phone },
+        { label: 'Email:', value: formData.email },
+        { label: 'Модель:', value: formData.model },
+        { label: 'Серійний номер:', value: formData.serialNumber.toUpperCase() },
+        { label: 'Дата покупки:', value: formData.purchaseDate ? new Date(formData.purchaseDate).toLocaleDateString('uk-UA') : '' },
+        { label: 'Дата реєстрації:', value: new Date().toLocaleDateString('uk-UA') },
+        { label: 'Гарантія:', value: '24 місяці з дати покупки' },
+      ];
+
+      fields.forEach((f, i) => {
+        const y = startY + i * lineH;
+        doc.setFontSize(10);
+        doc.setTextColor(130, 130, 130);
+        doc.setFont('helvetica', 'normal');
+        doc.text(f.label, labelX, y);
+        doc.setTextColor(17, 17, 17);
+        doc.setFont('helvetica', 'bold');
+        doc.text(f.value, valueX, y);
+      });
+
+      // Divider
+      const afterInfoY = startY + fields.length * lineH + 5;
+      doc.setDrawColor(220, 220, 220);
+      doc.line(30, afterInfoY, 180, afterInfoY);
+
+      // QR Code
+      const qrUrl = 'https://hecht-service.com.ua/verify?cert=' + cert;
+      const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 200, margin: 1, color: { dark: '#111111', light: '#F8F7F4' } });
+      const qrY = afterInfoY + 8;
+      doc.addImage(qrDataUrl, 'PNG', w / 2 - 20, qrY, 40, 40);
+
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Скануйте для перевірки автентичності', w / 2, qrY + 45, { align: 'center' });
+
+      // Terms box
+      const termsY = qrY + 55;
+      doc.setFillColor(240, 240, 238);
+      doc.roundedRect(30, termsY, 150, 32, 3, 3, 'F');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      const terms = [
+        'Гарантія діє за умови використання техніки за призначенням та дотримання',
+        'інструкції з експлуатації. Гарантія не поширюється на витратні матеріали,',
+        'пошкодження від неправильної експлуатації та несанкціонованого ремонту.',
+        'Повні умови: hecht-service.com.ua/pravova-informatsiya'
+      ];
+      terms.forEach((line, i) => {
+        doc.text(line, w / 2, termsY + 7 + i * 4.5, { align: 'center' });
+      });
+
+      // Footer
+      doc.setFillColor(227, 6, 19);
+      doc.rect(0, 289, w, 8, 'F');
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
+      doc.text('ТОВ «ДЖІЕС КОМФОРТ СІСТЕМ» • hecht-service.com.ua • garantiya@hecht-service.com.ua', w / 2, 294, { align: 'center' });
+
+      // Save
+      doc.save('Hecht-Sertifikat-' + cert + '.pdf');
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      alert('Помилка генерації PDF. Спробуйте ще раз.');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.consent) {
       setError('Будь ласка, дайте згоду на обробку персональних даних');
       return;
     }
-
     setLoading(true);
     setError('');
-
     try {
       const cert = generateCertNumber();
-
-      // Check duplicate serial number
       const { data: existing } = await supabase
         .from('warranty_registrations')
         .select('id')
         .eq('serial_number', formData.serialNumber.toUpperCase())
         .limit(1);
-
       if (existing && existing.length > 0) {
         setError('Цей серійний номер вже зареєстровано раніше!');
         setLoading(false);
         return;
       }
-
-      // Insert warranty registration
       const { error: insertError } = await supabase
         .from('warranty_registrations')
         .insert({
@@ -65,9 +180,7 @@ export default function HomePage() {
           purchase_date: formData.purchaseDate,
           status: 'Нова'
         });
-
       if (insertError) throw insertError;
-
       setCertNumber(cert);
       setSubmitted(true);
     } catch (err) {
@@ -86,7 +199,6 @@ export default function HomePage() {
     transition: 'border-color 0.25s', boxSizing: 'border-box',
     letterSpacing: key === 'serialNumber' ? '0.03em' : 'normal'
   });
-
   const labelStyle = { display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--text2)', marginBottom: 6 };
 
   if (submitted) {
@@ -106,21 +218,30 @@ export default function HomePage() {
             Гарантія зареєстрована!
           </h1>
           <p style={{ fontSize: 15, color: 'var(--text2)', marginBottom: 24, lineHeight: 1.6 }}>
-            Офіційний PDF-сертифікат надіслано на вашу пошту. Перевірте вхідні та спам.
+            Завантажте PDF-сертифікат з QR-кодом — він знадобиться при зверненні в сервіс.
           </p>
           <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', borderRadius: 14, padding: 16, marginBottom: 24 }}>
             <div style={{ fontSize: 11, color: 'var(--red)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Номер сертифіката</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', letterSpacing: '0.03em' }}>{certNumber}</div>
           </div>
+
+          <button onClick={() => generatePDF(certNumber)} disabled={pdfLoading} style={{
+            width: '100%', padding: '14px', background: 'var(--red)', color: '#fff', border: 'none',
+            borderRadius: 12, fontWeight: 600, fontSize: 15, cursor: pdfLoading ? 'wait' : 'pointer',
+            fontFamily: "'Inter', sans-serif", marginBottom: 12, opacity: pdfLoading ? 0.7 : 1
+          }}>
+            {pdfLoading ? 'Генерація...' : '📄 Завантажити PDF-сертифікат'}
+          </button>
+
           <div style={{ background: 'var(--green-bg)', border: '1px solid var(--green-border)', borderRadius: 14, padding: 20, textAlign: 'left', marginBottom: 28 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--green)', marginBottom: 8 }}>Що далі?</div>
             <p style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.7, margin: 0 }}>
-              Збережіть лист із сертифікатом — він знадобиться при зверненні в сервіс. Гарантія діє з дати покупки.
+              Збережіть PDF-сертифікат — він знадобиться при зверненні в сервіс. Гарантія діє з дати покупки.
             </p>
           </div>
           <button onClick={() => { setSubmitted(false); setFormData({ firstName: '', lastName: '', email: '', phone: '', serialNumber: '', model: '', purchaseDate: '', consent: false }); setFileName(''); }} style={{
-            padding: '13px 28px', background: 'var(--red)', color: '#fff', border: 'none',
-            borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'Inter', sans-serif"
+            padding: '13px 28px', background: 'transparent', color: 'var(--text2)', border: '1px solid var(--border)',
+            borderRadius: 12, fontWeight: 500, fontSize: 14, cursor: 'pointer', fontFamily: "'Inter', sans-serif"
           }}>
             Зареєструвати ще одну техніку
           </button>
@@ -133,9 +254,7 @@ export default function HomePage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', transition: 'background 0.4s' }}>
       <Navbar />
-
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '56px 24px 0' }}>
-        {/* Badge */}
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 8,
           background: 'var(--card)', border: '1px solid var(--border)',
@@ -146,7 +265,6 @@ export default function HomePage() {
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#00A86B', display: 'inline-block' }} />
           Офіційний сервісний центр Hecht в Україні з 2013 року
         </div>
-
         <h1 style={{
           fontFamily: "'Space Grotesk', sans-serif",
           fontSize: 'clamp(32px, 5vw, 48px)', fontWeight: 700,
@@ -157,8 +275,6 @@ export default function HomePage() {
         <p style={{ fontSize: 17, color: 'var(--text2)', lineHeight: 1.7, marginBottom: 44, maxWidth: 540 }}>
           Гарантія до 24 місяців • Офіційний PDF-сертифікат з QR-кодом • Надсилається на пошту автоматично
         </p>
-
-        {/* Form Card */}
         <form onSubmit={handleSubmit} style={{
           background: 'var(--card)', border: '1px solid var(--border)',
           borderRadius: 24, padding: '40px 32px',
@@ -167,7 +283,6 @@ export default function HomePage() {
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 24 }}>
             Дані покупця
           </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
             {[
               { key: 'firstName', label: "Ім'я", ph: 'Олександр' },
@@ -185,12 +300,10 @@ export default function HomePage() {
               </div>
             ))}
           </div>
-
           <div style={{ height: 1, background: 'var(--border)', margin: '30px 0' }} />
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 24 }}>
             Інформація про техніку
           </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
             <div>
               <label style={labelStyle}>Серійний номер (S/N) <span style={{ color: 'var(--red)' }}>*</span></label>
@@ -217,8 +330,6 @@ export default function HomePage() {
                 style={inputStyle('purchaseDate')} />
             </div>
           </div>
-
-          {/* File upload */}
           <div style={{ marginTop: 14, marginBottom: 14 }}>
             <label style={labelStyle}>Чек / накладна <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>(необов'язково)</span></label>
             <label style={{
@@ -239,10 +350,7 @@ export default function HomePage() {
               )}
             </label>
           </div>
-
           <div style={{ height: 1, background: 'var(--border)', margin: '28px 0' }} />
-
-          {/* Consent */}
           <div onClick={() => setFormData({ ...formData, consent: !formData.consent })}
             style={{ display: 'flex', gap: 12, cursor: 'pointer', marginBottom: 28, alignItems: 'flex-start' }}>
             <div style={{
@@ -260,15 +368,11 @@ export default function HomePage() {
               Підтверджую, що інформація достовірна, техніка придбана у офіційного дилера Hecht.
             </span>
           </div>
-
-          {/* Error */}
           {error && (
             <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14, color: 'var(--red)' }}>
               {error}
             </div>
           )}
-
-          {/* Submit */}
           <button type="submit" disabled={loading} style={{
             width: '100%', padding: '16px', background: loading ? 'var(--text3)' : 'var(--red)',
             color: '#fff', border: 'none', borderRadius: 14, fontSize: 16, fontWeight: 600,
@@ -277,13 +381,10 @@ export default function HomePage() {
           }}>
             {loading ? 'Реєстрація...' : 'Зареєструвати гарантію'}
           </button>
-
           <p style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center', marginTop: 16 }}>
             Рекомендуємо прикріпити чек — це прискорить обробку гарантії
           </p>
         </form>
-
-        {/* Footer */}
         <footer style={{ padding: '36px 0 56px', textAlign: 'center', borderTop: '1px solid var(--border)', marginTop: 40 }}>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 24, marginBottom: 14, flexWrap: 'wrap' }}>
             <a href="/privacy" style={{ fontSize: 12, color: 'var(--text3)', textDecoration: 'none' }}>Політика конфіденційності</a>
