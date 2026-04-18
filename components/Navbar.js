@@ -17,7 +17,7 @@ export default function Navbar({ title = 'Hecht Service', showShop = true, right
         justifyContent: 'space-between', alignItems: 'center'
       }}>
         <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-          <img src="/hecht-logo.png" alt="Hecht" style={{ height: 30, objectFit: 'contain' }} />
+          <img src="/hecht-logo.svg" alt="Hecht" style={{ height: 32, objectFit: 'contain' }} />
           {title !== 'Hecht Service' && (
             <span style={{
               fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600,
