@@ -2,7 +2,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import Navbar from '../../components/Navbar';
-
 export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [password, setPassword] = useState('');
@@ -16,19 +15,16 @@ export default function AdminPage() {
   const [newComment, setNewComment] = useState('');
   const [metrics, setMetrics] = useState({ total: 0, nova: 0, work: 0, done: 0 });
   const chatRef = useRef(null);
-
   useEffect(() => {
     const s = sessionStorage.getItem('hecht_admin');
     if (s === 'true') setLoggedIn(true);
   }, []);
-
   useEffect(() => {
     if (loggedIn) {
       loadData();
       loadCenters();
     }
   }, [loggedIn]);
-
   const handleLogin = async (e) => {
     e.preventDefault();
     if (password === 'g91!m#HIU6@aJ9') {
@@ -39,13 +35,11 @@ export default function AdminPage() {
       setLoginError('Невірний пароль');
     }
   };
-
   const loadData = async () => {
     const { data } = await supabase
       .from('warranty_registrations')
       .select('*, service_centers(city, center_name), comment_list:comments(id)')
       .order('registration_date', { ascending: false });
-
     if (data) {
       const withCounts = data.map(r => ({
         ...r,
@@ -60,12 +54,10 @@ export default function AdminPage() {
       });
     }
   };
-
   const loadCenters = async () => {
     const { data } = await supabase.from('service_centers').select('*').order('city');
     if (data) setCenters(data);
   };
-
   const loadComments = async (warrantyId) => {
     const { data } = await supabase
       .from('comments')
@@ -74,13 +66,11 @@ export default function AdminPage() {
       .order('created_at', { ascending: true });
     if (data) setComments(data);
   };
-
   const openCard = async (reg) => {
     setSelectedCard(reg);
     await loadComments(reg.id);
     setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 100);
   };
-
   const sendComment = async () => {
     if (!newComment.trim() || !selectedCard) return;
     await supabase.from('comments').insert({
@@ -94,13 +84,11 @@ export default function AdminPage() {
     await loadData();
     setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 100);
   };
-
   const updateStatus = async (id, status) => {
     await supabase.from('warranty_registrations').update({ status, last_updated: new Date().toISOString() }).eq('id', id);
     if (selectedCard && selectedCard.id === id) setSelectedCard({ ...selectedCard, status });
     await loadData();
   };
-
   const assignCenter = async (id, centerId) => {
     await supabase.from('warranty_registrations').update({
       service_center_id: centerId || null,
@@ -108,7 +96,19 @@ export default function AdminPage() {
     }).eq('id', id);
     await loadData();
   };
-
+  const exportExcel = () => {
+    const headers = ['Дата','Сертифікат','Ім\'я','Прізвище','Телефон','Email','Модель','Серійний номер','Статус','Сервісний центр'];
+    const rows = registrations.map(r => [
+      r.registration_date ? new Date(r.registration_date).toLocaleDateString('uk-UA') : '',
+      r.cert_number, r.first_name, r.last_name, r.phone, r.email, r.model, r.serial_number, r.status,
+      r.service_centers ? r.service_centers.city + ' — ' + r.service_centers.center_name : ''
+    ]);
+    const bom = '\uFEFF';
+    const csv = bom + [headers, ...rows].map(r => r.map(c => '"' + String(c || '').replace(/"/g, '""') + '"').join(';')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'hecht-export-' + new Date().toISOString().slice(0,10) + '.csv'; a.click();
+  };
   const filtered = registrations.filter(r => {
     const q = search.toLowerCase();
     const matchSearch = !q || r.first_name?.toLowerCase().includes(q) || r.last_name?.toLowerCase().includes(q)
@@ -116,7 +116,6 @@ export default function AdminPage() {
     const matchStatus = !statusFilter || r.status === statusFilter;
     return matchSearch && matchStatus;
   });
-
   const statusClass = (s) => {
     if (s === 'Нова') return { background: 'var(--yellow-bg)', color: '#92400e', border: '1px solid var(--yellow-border)' };
     if (s === 'В роботі') return { background: 'var(--orange-bg)', color: 'var(--orange)', border: '1px solid var(--orange-border)' };
@@ -124,19 +123,16 @@ export default function AdminPage() {
     if (s === 'Видана') return { background: 'var(--blue-bg)', color: 'var(--blue)', border: '1px solid var(--blue-border)' };
     return {};
   };
-
   const formatDate = (d) => {
     if (!d) return '—';
     const dt = new Date(d);
     return dt.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
-
   const formatChatTime = (d) => {
     const dt = new Date(d);
     return dt.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) + ' ' +
       dt.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
   };
-
   if (!loggedIn) {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -176,7 +172,6 @@ export default function AdminPage() {
       </div>
     );
   }
-
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', transition: 'background 0.4s' }}>
       <Navbar title="Hecht Admin" showShop={false} rightContent={
@@ -186,13 +181,17 @@ export default function AdminPage() {
             background: 'var(--card)', fontSize: 13, fontWeight: 500, color: 'var(--text2)',
             textDecoration: 'none', fontFamily: "'Inter', sans-serif"
           }}>Сервісні центри</a>
+          <button onClick={exportExcel} style={{
+            padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border)',
+            background: 'var(--card)', fontSize: 13, fontWeight: 500, color: 'var(--text2)',
+            cursor: 'pointer', fontFamily: "'Inter', sans-serif"
+          }}>📊 Excel</button>
           <button onClick={() => { sessionStorage.removeItem('hecht_admin'); setLoggedIn(false); }} style={{
             padding: '8px 16px', borderRadius: 10, background: 'var(--red)', color: '#fff',
             border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'Inter', sans-serif"
           }}>Вийти</button>
         </>
       } />
-
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '28px 24px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
           {[
@@ -211,7 +210,6 @@ export default function AdminPage() {
             </div>
           ))}
         </div>
-
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 20px', marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Пошук по серійному номеру, прізвищу, моделі..."
@@ -225,9 +223,7 @@ export default function AdminPage() {
             <option value="Видана">Видана</option>
           </select>
         </div>
-
         <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12, paddingLeft: 4 }}>Знайдено: {filtered.length}</div>
-
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow)', overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200 }}>
             <thead>
@@ -268,7 +264,6 @@ export default function AdminPage() {
           </table>
         </div>
       </div>
-
       {selectedCard && (
         <div onClick={e => { if (e.target === e.currentTarget) setSelectedCard(null); }}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -283,7 +278,6 @@ export default function AdminPage() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>✕</button>
             </div>
-
             <div style={{ padding: '20px 28px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               {[
                 { label: 'Покупець', value: selectedCard.first_name + ' ' + selectedCard.last_name },
@@ -299,9 +293,7 @@ export default function AdminPage() {
                 </div>
               ))}
             </div>
-
             <div style={{ height: 1, background: 'var(--border)', margin: '0 28px' }} />
-
             <div style={{ padding: '20px 28px', display: 'flex', gap: 12, alignItems: 'center' }}>
               <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--text2)' }}>Статус:</label>
               <select value={selectedCard.status} onChange={e => updateStatus(selectedCard.id, e.target.value)}
@@ -312,12 +304,9 @@ export default function AdminPage() {
                 <option value="Видана">Видана</option>
               </select>
             </div>
-
             <div style={{ height: 1, background: 'var(--border)', margin: '0 28px' }} />
-
             <div style={{ padding: '20px 28px 24px' }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Коментарі</div>
-
               <div ref={chatRef} style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {comments.length === 0 && (
                   <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)', fontSize: 13 }}>Поки що немає коментарів</div>
@@ -340,7 +329,6 @@ export default function AdminPage() {
                   </div>
                 ))}
               </div>
-
               <div style={{ display: 'flex', gap: 10 }}>
                 <input value={newComment} onChange={e => setNewComment(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') sendComment(); }}
