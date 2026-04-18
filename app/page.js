@@ -23,14 +23,6 @@ export default function HomePage() {
       + String(now.getMinutes()).padStart(2, '0')
       + String(now.getSeconds()).padStart(2, '0');
   };
-  const loadFont = async (url) => {
-    const res = await fetch(url);
-    const buf = await res.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    return btoa(binary);
-  };
   const generatePDF = async (cert) => {
     setPdfLoading(true);
     try {
@@ -38,47 +30,51 @@ export default function HomePage() {
       const QRCode = (await import('qrcode')).default;
       const doc = new jsPDF('p', 'mm', 'a4');
       const w = 210;
-      // Load Cyrillic fonts
-      const fontRegular = await loadFont('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.12/fonts/Roboto/Roboto-Regular.ttf');
-      const fontBold = await loadFont('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.12/fonts/Roboto/Roboto-Medium.ttf');
-      doc.addFileToVFS('Roboto-Regular.ttf', fontRegular);
-      doc.addFileToVFS('Roboto-Bold.ttf', fontBold);
-      doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-      doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
-      // Background
+      // Try load Cyrillic font
+      try {
+        const res = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.12/fonts/Roboto/Roboto-Regular.ttf');
+        const buf = await res.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = ''; for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        const b64 = btoa(binary);
+        const res2 = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.12/fonts/Roboto/Roboto-Medium.ttf');
+        const buf2 = await res2.arrayBuffer();
+        const bytes2 = new Uint8Array(buf2);
+        let binary2 = ''; for (let i = 0; i < bytes2.length; i++) binary2 += String.fromCharCode(bytes2[i]);
+        const b64b = btoa(binary2);
+        doc.addFileToVFS('Roboto-Regular.ttf', b64);
+        doc.addFileToVFS('Roboto-Bold.ttf', b64b);
+        doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+        doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
+        doc.setFont('Roboto', 'normal');
+      } catch (fontErr) {
+        console.warn('Font load failed, using default', fontErr);
+      }
+      const setFontSafe = (style) => { try { doc.setFont('Roboto', style); } catch(e) { doc.setFont('helvetica', style); } };
       doc.setFillColor(248, 247, 244);
       doc.rect(0, 0, w, 297, 'F');
-      // Red header bar
       doc.setFillColor(227, 6, 19);
       doc.rect(0, 0, w, 8, 'F');
-      // HECHT text logo
-      doc.setFont('Roboto', 'bold');
+      setFontSafe('bold');
       doc.setFontSize(28);
       doc.setTextColor(227, 6, 19);
       doc.text('HECHT', w / 2, 30, { align: 'center' });
-      doc.setFont('Roboto', 'normal');
+      setFontSafe('normal');
       doc.setFontSize(9);
       doc.setTextColor(150, 150, 150);
       doc.text('made for garden', w / 2, 36, { align: 'center' });
-      // Title
-      doc.setFont('Roboto', 'bold');
+      setFontSafe('bold');
       doc.setFontSize(20);
       doc.setTextColor(17, 17, 17);
       doc.text('\u0413\u0410\u0420\u0410\u041D\u0422\u0406\u0419\u041D\u0418\u0419 \u0421\u0415\u0420\u0422\u0418\u0424\u0406\u041A\u0410\u0422', w / 2, 52, { align: 'center' });
-      // Certificate number
       doc.setFillColor(255, 235, 235);
       doc.roundedRect(55, 57, 100, 14, 4, 4, 'F');
       doc.setFontSize(14);
       doc.setTextColor(227, 6, 19);
       doc.text(cert, w / 2, 66, { align: 'center' });
-      // Divider
       doc.setDrawColor(220, 220, 220);
       doc.line(30, 78, 180, 78);
-      // Info section
-      const startY = 88;
-      const labelX = 32;
-      const valueX = 85;
-      const lineH = 10;
+      const startY = 88, labelX = 32, valueX = 85, lineH = 10;
       const fields = [
         { label: '\u041F\u043E\u043A\u0443\u043F\u0435\u0446\u044C:', value: formData.firstName + ' ' + formData.lastName },
         { label: '\u0422\u0435\u043B\u0435\u0444\u043E\u043D:', value: formData.phone },
@@ -93,26 +89,23 @@ export default function HomePage() {
         const y = startY + i * lineH;
         doc.setFontSize(10);
         doc.setTextColor(130, 130, 130);
-        doc.setFont('Roboto', 'normal');
+        setFontSafe('normal');
         doc.text(f.label, labelX, y);
         doc.setTextColor(17, 17, 17);
-        doc.setFont('Roboto', 'bold');
+        setFontSafe('bold');
         doc.text(f.value, valueX, y);
       });
-      // Divider
       const afterInfoY = startY + fields.length * lineH + 5;
       doc.setDrawColor(220, 220, 220);
       doc.line(30, afterInfoY, 180, afterInfoY);
-      // QR Code
       const qrUrl = 'https://hecht-service.com.ua/verify?cert=' + cert;
       const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 200, margin: 1, color: { dark: '#111111', light: '#F8F7F4' } });
       const qrY = afterInfoY + 8;
       doc.addImage(qrDataUrl, 'PNG', w / 2 - 20, qrY, 40, 40);
-      doc.setFont('Roboto', 'normal');
+      setFontSafe('normal');
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
       doc.text('\u0421\u043A\u0430\u043D\u0443\u0439\u0442\u0435 \u0434\u043B\u044F \u043F\u0435\u0440\u0435\u0432\u0456\u0440\u043A\u0438 \u0430\u0432\u0442\u0435\u043D\u0442\u0438\u0447\u043D\u043E\u0441\u0442\u0456', w / 2, qrY + 45, { align: 'center' });
-      // Terms box
       const termsY = qrY + 55;
       doc.setFillColor(240, 240, 238);
       doc.roundedRect(30, termsY, 150, 32, 3, 3, 'F');
@@ -122,14 +115,21 @@ export default function HomePage() {
       doc.text('\u0456\u043D\u0441\u0442\u0440\u0443\u043A\u0446\u0456\u0457 \u0437 \u0435\u043A\u0441\u043F\u043B\u0443\u0430\u0442\u0430\u0446\u0456\u0457. \u0413\u0430\u0440\u0430\u043D\u0442\u0456\u044F \u043D\u0435 \u043F\u043E\u0448\u0438\u0440\u044E\u0454\u0442\u044C\u0441\u044F \u043D\u0430 \u0432\u0438\u0442\u0440\u0430\u0442\u043D\u0456 \u043C\u0430\u0442\u0435\u0440\u0456\u0430\u043B\u0438,', w / 2, termsY + 11.5, { align: 'center' });
       doc.text('\u043F\u043E\u0448\u043A\u043E\u0434\u0436\u0435\u043D\u043D\u044F \u0432\u0456\u0434 \u043D\u0435\u043F\u0440\u0430\u0432\u0438\u043B\u044C\u043D\u043E\u0457 \u0435\u043A\u0441\u043F\u043B\u0443\u0430\u0442\u0430\u0446\u0456\u0457 \u0442\u0430 \u043D\u0435\u0441\u0430\u043D\u043A\u0446\u0456\u043E\u043D\u043E\u0432\u0430\u043D\u043E\u0433\u043E \u0440\u0435\u043C\u043E\u043D\u0442\u0443.', w / 2, termsY + 16, { align: 'center' });
       doc.text('\u041F\u043E\u0432\u043D\u0456 \u0443\u043C\u043E\u0432\u0438: hecht-service.com.ua/pravova-informatsiya', w / 2, termsY + 20.5, { align: 'center' });
-      // Footer
       doc.setFillColor(227, 6, 19);
       doc.rect(0, 289, w, 8, 'F');
       doc.setFontSize(7);
       doc.setTextColor(255, 255, 255);
       doc.text('\u0422\u041E\u0412 \u00AB\u0414\u0416\u0406\u0415\u0421 \u041A\u041E\u041C\u0424\u041E\u0420\u0422 \u0421\u0406\u0421\u0422\u0415\u041C\u00BB \u2022 hecht-service.com.ua \u2022 garantiya@hecht-service.com.ua', w / 2, 294, { align: 'center' });
-      // Save
-      doc.save('Hecht-Sertifikat-' + cert + '.pdf');
+      // Mobile-friendly download
+      const pdfBlob = doc.output('blob');
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = 'Hecht-Sertifikat-' + cert + '.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
     } catch (err) {
       console.error('PDF generation error:', err);
       alert('\u041F\u043E\u043C\u0438\u043B\u043A\u0430 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0456\u0457 PDF. \u0421\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0449\u0435 \u0440\u0430\u0437.');
