@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import Navbar from '../components/Navbar';
-
 export default function HomePage() {
   const [formData, setFormData] = useState({
     firstName: '', lastName: '', email: '', phone: '',
@@ -15,7 +14,6 @@ export default function HomePage() {
   const [focused, setFocused] = useState(null);
   const [fileName, setFileName] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
-
   const generateCertNumber = () => {
     const now = new Date();
     return 'HS-' + now.getFullYear()
@@ -25,57 +23,39 @@ export default function HomePage() {
       + String(now.getMinutes()).padStart(2, '0')
       + String(now.getSeconds()).padStart(2, '0');
   };
-
   const generatePDF = async (cert) => {
     setPdfLoading(true);
     try {
       const { jsPDF } = await import('jspdf');
       const QRCode = (await import('qrcode')).default;
-
       const doc = new jsPDF('p', 'mm', 'a4');
       const w = 210;
-
-      // Background
       doc.setFillColor(248, 247, 244);
       doc.rect(0, 0, w, 297, 'F');
-
-      // Red header bar
       doc.setFillColor(227, 6, 19);
       doc.rect(0, 0, w, 8, 'F');
-
-      // HECHT text logo
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(28);
       doc.setTextColor(227, 6, 19);
       doc.text('HECHT', w / 2, 30, { align: 'center' });
-
       doc.setFontSize(9);
       doc.setTextColor(150, 150, 150);
       doc.text('made for garden', w / 2, 36, { align: 'center' });
-
-      // Title
       doc.setFontSize(20);
       doc.setTextColor(17, 17, 17);
       doc.text('ГАРАНТІЙНИЙ СЕРТИФІКАТ', w / 2, 52, { align: 'center' });
-
-      // Certificate number
       doc.setFillColor(227, 6, 19, 0.08);
       doc.roundedRect(55, 57, 100, 14, 4, 4, 'F');
       doc.setFontSize(14);
       doc.setTextColor(227, 6, 19);
       doc.setFont('helvetica', 'bold');
       doc.text(cert, w / 2, 66, { align: 'center' });
-
-      // Divider
       doc.setDrawColor(220, 220, 220);
       doc.line(30, 78, 180, 78);
-
-      // Info section
       const startY = 88;
       const labelX = 32;
       const valueX = 85;
       const lineH = 10;
-
       const fields = [
         { label: 'Покупець:', value: formData.firstName + ' ' + formData.lastName },
         { label: 'Телефон:', value: formData.phone },
@@ -86,7 +66,6 @@ export default function HomePage() {
         { label: 'Дата реєстрації:', value: new Date().toLocaleDateString('uk-UA') },
         { label: 'Гарантія:', value: '24 місяці з дати покупки' },
       ];
-
       fields.forEach((f, i) => {
         const y = startY + i * lineH;
         doc.setFontSize(10);
@@ -97,24 +76,17 @@ export default function HomePage() {
         doc.setFont('helvetica', 'bold');
         doc.text(f.value, valueX, y);
       });
-
-      // Divider
       const afterInfoY = startY + fields.length * lineH + 5;
       doc.setDrawColor(220, 220, 220);
       doc.line(30, afterInfoY, 180, afterInfoY);
-
-      // QR Code
       const qrUrl = 'https://hecht-service.com.ua/verify?cert=' + cert;
       const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 200, margin: 1, color: { dark: '#111111', light: '#F8F7F4' } });
       const qrY = afterInfoY + 8;
       doc.addImage(qrDataUrl, 'PNG', w / 2 - 20, qrY, 40, 40);
-
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
       doc.setFont('helvetica', 'normal');
       doc.text('Скануйте для перевірки автентичності', w / 2, qrY + 45, { align: 'center' });
-
-      // Terms box
       const termsY = qrY + 55;
       doc.setFillColor(240, 240, 238);
       doc.roundedRect(30, termsY, 150, 32, 3, 3, 'F');
@@ -129,15 +101,11 @@ export default function HomePage() {
       terms.forEach((line, i) => {
         doc.text(line, w / 2, termsY + 7 + i * 4.5, { align: 'center' });
       });
-
-      // Footer
       doc.setFillColor(227, 6, 19);
       doc.rect(0, 289, w, 8, 'F');
       doc.setFontSize(7);
       doc.setTextColor(255, 255, 255);
       doc.text('ТОВ «ДЖІЕС КОМФОРТ СІСТЕМ» • hecht-service.com.ua • garantiya@hecht-service.com.ua', w / 2, 294, { align: 'center' });
-
-      // Save
       doc.save('Hecht-Sertifikat-' + cert + '.pdf');
     } catch (err) {
       console.error('PDF generation error:', err);
@@ -146,7 +114,6 @@ export default function HomePage() {
       setPdfLoading(false);
     }
   };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.consent) {
@@ -183,6 +150,21 @@ export default function HomePage() {
       if (insertError) throw insertError;
       setCertNumber(cert);
       setSubmitted(true);
+      // Send email to customer + admin notification
+      fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          certNumber: cert,
+          firstName: formData.firstName.trim(),
+          lastName: formData.lastName.trim(),
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
+          model: formData.model.trim(),
+          serialNumber: formData.serialNumber.toUpperCase().trim(),
+          purchaseDate: formData.purchaseDate
+        })
+      }).catch(err => console.error('Email send error:', err));
     } catch (err) {
       console.error(err);
       setError('Помилка при реєстрації. Спробуйте пізніше.');
@@ -190,7 +172,6 @@ export default function HomePage() {
       setLoading(false);
     }
   };
-
   const inputStyle = (key) => ({
     width: '100%', padding: '14px 16px', fontSize: 15,
     fontFamily: key === 'serialNumber' ? "'Space Mono', monospace" : "'Inter', sans-serif",
@@ -200,7 +181,6 @@ export default function HomePage() {
     letterSpacing: key === 'serialNumber' ? '0.03em' : 'normal'
   });
   const labelStyle = { display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--text2)', marginBottom: 6 };
-
   if (submitted) {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, transition: 'background 0.4s' }}>
@@ -224,7 +204,6 @@ export default function HomePage() {
             <div style={{ fontSize: 11, color: 'var(--red)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Номер сертифіката</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', letterSpacing: '0.03em' }}>{certNumber}</div>
           </div>
-
           <button onClick={() => generatePDF(certNumber)} disabled={pdfLoading} style={{
             width: '100%', padding: '14px', background: 'var(--red)', color: '#fff', border: 'none',
             borderRadius: 12, fontWeight: 600, fontSize: 15, cursor: pdfLoading ? 'wait' : 'pointer',
@@ -232,7 +211,6 @@ export default function HomePage() {
           }}>
             {pdfLoading ? 'Генерація...' : '📄 Завантажити PDF-сертифікат'}
           </button>
-
           <div style={{ background: 'var(--green-bg)', border: '1px solid var(--green-border)', borderRadius: 14, padding: 20, textAlign: 'left', marginBottom: 28 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--green)', marginBottom: 8 }}>Що далі?</div>
             <p style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.7, margin: 0 }}>
@@ -250,7 +228,6 @@ export default function HomePage() {
       </div>
     );
   }
-
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', transition: 'background 0.4s' }}>
       <Navbar />
