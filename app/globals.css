@@ -49,9 +49,9 @@
     inset 0 -1px 0 rgba(60, 45, 25, 0.04);
   --modal-tint: linear-gradient(
     135deg,
-    rgba(190, 150, 80, 0.04) 0%,
+    rgba(190, 150, 80, 0.05) 0%,
     transparent 40%,
-    rgba(150, 120, 60, 0.03) 100%
+    rgba(150, 120, 60, 0.035) 100%
   );
 }
 
@@ -106,12 +106,12 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.02);
   --modal-tint: radial-gradient(
     ellipse 60% 40% at 30% 0%,
-    rgba(99, 102, 241, 0.06) 0%,
+    rgba(99, 102, 241, 0.07) 0%,
     transparent 60%
   ),
   radial-gradient(
     ellipse 50% 40% at 80% 100%,
-    rgba(239, 68, 68, 0.05) 0%,
+    rgba(239, 68, 68, 0.06) 0%,
     transparent 60%
   );
 }
@@ -129,9 +129,7 @@ body {
   overflow-x: hidden;
 }
 
-/* ═══════════════════════════════════════
-   LIGHT: Heavy paper texture
-   ═══════════════════════════════════════ */
+/* ═══ LIGHT: Heavy paper texture ═══ */
 body::before {
   content: '';
   position: fixed;
@@ -156,10 +154,7 @@ body::after {
   transition: opacity 0.6s ease;
 }
 
-/* ═══════════════════════════════════════
-   DARK: Warm animated ambient blobs
-   (більш насичені, з теплим акцентом)
-   ═══════════════════════════════════════ */
+/* ═══ DARK: Warm animated ambient ═══ */
 [data-theme="dark"] body::before {
   background: var(--bg);
   background-image: none;
@@ -181,9 +176,7 @@ body::after {
   100% { transform: translate(-4px, 6px) scale(1.01); }
 }
 
-/* ═══════════════════════════════════════
-   FLOATING GLASS NAVBAR
-   ═══════════════════════════════════════ */
+/* ═══ NAVBAR ═══ */
 header {
   margin: var(--nav-margin) !important;
   border-radius: var(--nav-radius) !important;
@@ -201,9 +194,7 @@ header {
   -webkit-backdrop-filter: blur(28px) saturate(1.5) !important;
 }
 
-/* ═══════════════════════════════════════
-   GLASS CARDS (dark theme)
-   ═══════════════════════════════════════ */
+/* ═══ FORMS (dark) ═══ */
 [data-theme="dark"] form {
   backdrop-filter: blur(24px) saturate(1.3);
   -webkit-backdrop-filter: blur(24px) saturate(1.3);
@@ -211,9 +202,7 @@ header {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-/* ═══════════════════════════════════════
-   GLASS BUTTONS
-   ═══════════════════════════════════════ */
+/* ═══ BUTTONS ═══ */
 button[type="submit"],
 button[style*="var(--red)"] {
   position: relative;
@@ -234,9 +223,7 @@ button[type="submit"]:hover::after {
   left: 120%;
 }
 
-/* ═══════════════════════════════════════
-   INPUT STYLES
-   ═══════════════════════════════════════ */
+/* ═══ INPUTS ═══ */
 input::placeholder, textarea::placeholder { color: var(--text3); }
 
 input:focus, select:focus, textarea:focus {
@@ -257,14 +244,10 @@ input:focus, select:focus, textarea:focus {
   backdrop-filter: blur(8px);
 }
 
-/* ═══════════════════════════════════════
-   STATUS BADGES
-   ═══════════════════════════════════════ */
+/* ═══ BADGES ═══ */
 [data-theme="dark"] .status-new { color: #FFC94A !important; }
 
-/* ═══════════════════════════════════════
-   TABLE
-   ═══════════════════════════════════════ */
+/* ═══ TABLE ═══ */
 [data-theme="dark"] table tbody tr {
   border-bottom-color: rgba(255, 255, 255, 0.06) !important;
 }
@@ -279,36 +262,29 @@ input:focus, select:focus, textarea:focus {
 
 /* ═══════════════════════════════════════
    MODAL — Handmade Paper / Warm Matte
-   ═══════════════════════════════════════
-   1. Overlay сильно розмиває і затемнює таблицю позаду.
-   2. Модалка — SOLID, з ТЕКСТУРОЮ паперу (світла) або warm ambient (темна).
-   3. Жодного backdrop-filter на самій модалці → текст 100% чіткий.
    ═══════════════════════════════════════ */
 
-/* Overlay (напівпрозорий фон-затемнювач) */
-div[style*="rgba(0,0,0,0.5)"] {
-  background: var(--modal-overlay) !important;
-  backdrop-filter: var(--modal-overlay-blur) !important;
-  -webkit-backdrop-filter: var(--modal-overlay-blur) !important;
+/* Overlay — розмиває і затемнює все позаду */
+.modal-overlay {
+  background: var(--modal-overlay);
+  backdrop-filter: var(--modal-overlay-blur);
+  -webkit-backdrop-filter: var(--modal-overlay-blur);
   animation: overlayFade 0.3s ease both;
 }
 
-/* Сама модалка — контейнер */
-div[style*="rgba(0,0,0,0.5)"] > div {
+/* Картка — SOLID, з текстурою */
+.modal-card {
   position: relative;
-  background: var(--modal-bg) !important;
-  color: var(--modal-text) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  border: 1px solid var(--modal-border) !important;
-  box-shadow: var(--modal-shadow) !important;
+  background: var(--modal-bg);
+  color: var(--modal-text);
+  border: 1px solid var(--modal-border);
+  box-shadow: var(--modal-shadow);
   animation: modalPop 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
   overflow: hidden;
 }
 
-/* Внутрішній шар — warm tint (gradient). 
-   Не перекриває контент, бо z-index = 0 а контент природно вище. */
-div[style*="rgba(0,0,0,0.5)"] > div::before {
+/* Warm tint всередині */
+.modal-card::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -317,36 +293,30 @@ div[style*="rgba(0,0,0,0.5)"] > div::before {
   z-index: 0;
 }
 
-/* Текстура паперу тільки у світлій темі */
-div[style*="rgba(0,0,0,0.5)"] > div::after {
+/* Paper texture (світла) / matte noise (темна) */
+.modal-card::after {
   content: '';
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   background-image:
-    url("data:image/svg+xml,%3Csvg width='300' height='300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='paper'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)' opacity='0.08'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg width='300' height='300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='paper'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)' opacity='0.1'/%3E%3C/svg%3E");
   mix-blend-mode: multiply;
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
-[data-theme="dark"] div[style*="rgba(0,0,0,0.5)"] > div::after {
-  /* У темній — тонкий шум, без paper-ефекту, додає текстуру matte */
+[data-theme="dark"] .modal-card::after {
   background-image:
-    url("data:image/svg+xml,%3Csvg width='300' height='300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg width='300' height='300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
   mix-blend-mode: screen;
   opacity: 1;
 }
 
-/* Весь контент модалки — піднімаємо над текстурою */
-div[style*="rgba(0,0,0,0.5)"] > div > * {
+/* Контент піднімаємо над текстурою */
+.modal-card > * {
   position: relative;
   z-index: 1;
-}
-
-/* Заголовок у модалці — темніший у світлій темі, світліший у темній */
-div[style*="rgba(0,0,0,0.5)"] > div h2 {
-  color: var(--modal-text) !important;
 }
 
 @keyframes overlayFade {
@@ -359,40 +329,30 @@ div[style*="rgba(0,0,0,0.5)"] > div h2 {
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* ═══════════════════════════════════════
-   SCROLLBAR
-   ═══════════════════════════════════════ */
+/* ═══ SCROLLBAR ═══ */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
 [data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
 ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
 
-/* ═══════════════════════════════════════
-   SELECTION
-   ═══════════════════════════════════════ */
+/* ═══ SELECTION ═══ */
 ::selection {
   background: rgba(227, 6, 19, 0.15);
   color: var(--text);
 }
 
-/* ═══════════════════════════════════════
-   LINKS
-   ═══════════════════════════════════════ */
+/* ═══ LINKS ═══ */
 a { transition: color 0.2s ease, opacity 0.2s ease; }
 a:hover { opacity: 0.8; }
 
-/* ═══════════════════════════════════════
-   ANIMATIONS
-   ═══════════════════════════════════════ */
+/* ═══ ANIMATIONS ═══ */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ═══════════════════════════════════════
-   RESPONSIVE
-   ═══════════════════════════════════════ */
+/* ═══ RESPONSIVE ═══ */
 @media (max-width: 640px) {
   body { font-size: 14px; }
   [data-theme="dark"] {
