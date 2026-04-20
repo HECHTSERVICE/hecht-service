@@ -239,9 +239,16 @@ input:focus, select:focus, textarea:focus {
 /* ═══════════════════════════════════════
    MODAL GLASS (dark)
    ═══════════════════════════════════════ */
-[data-theme="dark"] div[style*="rgba(0,0,0,0.5)"] > div {
-  backdrop-filter: blur(32px) saturate(1.4) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(1.4) !important;
+div[style*="rgba(0,0,0,0.5)"] {
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+
+div[style*="rgba(0,0,0,0.5)"] > div {
+  background: var(--card-solid) !important;
+  backdrop-filter: blur(40px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(1.5) !important;
+  border: 1px solid var(--border) !important;
 }
 
 /* ═══════════════════════════════════════
