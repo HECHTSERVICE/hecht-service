@@ -195,11 +195,10 @@ export default function ServiceCentersPage() {
 
         {/* ADD USER MODAL */}
         {showAddUser && (
-          <div onClick={e => { if (e.target === e.currentTarget) setShowAddUser(null); }}
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <form onSubmit={addUser} style={{
-              background: 'var(--card-solid)', border: '1px solid var(--border)', borderRadius: 24,
-              padding: '32px', maxWidth: 420, width: '100%', animation: 'fadeUp 0.3s ease'
+          <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowAddUser(null); }}
+            style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <form onSubmit={addUser} className="modal-card" style={{
+              borderRadius: 24, padding: '32px', maxWidth: 420, width: '100%'
             }}>
               <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 20 }}>
                 Новий акаунт
