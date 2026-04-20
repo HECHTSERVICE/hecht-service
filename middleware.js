@@ -1,13 +1,16 @@
 /**
  * Hecht Service — Next.js Edge Middleware
- * Rate limiting на рівні Edge (Vercel) через Upstash Redis
+ * Rate limiting через Upstash Redis.
+ * 
+ * ВАЖЛИВО: middleware ЗАВЖДИ працює на Edge Runtime, тому використовує ESM imports
+ * (import/export), а не CommonJS (require/module.exports).
  */
 
-const { NextResponse } = require('next/server');
-const { Ratelimit } = require('@upstash/ratelimit');
-const { Redis } = require('@upstash/redis');
+import { NextResponse } from 'next/server';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
-// Публічні API: 30 запитів / 10 секунд з одного IP
+// Публічні роути: 30 запитів / 10 секунд з одного IP
 const publicRatelimit = new Ratelimit({
   redis: Redis.fromEnv(),
   limiter: Ratelimit.slidingWindow(30, '10 s'),
@@ -39,64 +42,70 @@ function getIp(request) {
   return '127.0.0.1';
 }
 
-async function middleware(request) {
-  const ip = getIp(request);
-  const pathname = request.nextUrl.pathname;
+export async function middleware(request) {
+  // Захист від падіння: якщо Redis не відповідає — НЕ блокуємо сайт,
+  // просто пропускаємо запит. Краще без захисту, ніж зламаний сайт.
+  try {
+    const ip = getIp(request);
+    const pathname = request.nextUrl.pathname;
 
-  let ratelimit;
+    let ratelimit;
 
-  if (
-    pathname.startsWith('/api/auth') ||
-    pathname.startsWith('/admin/login') ||
-    pathname.startsWith('/api/login')
-  ) {
-    ratelimit = authRatelimit;
-  } else if (
-    pathname.startsWith('/api/warranty') ||
-    pathname.startsWith('/api/register') ||
-    pathname.startsWith('/api/comments') ||
-    pathname.startsWith('/api/certificate')
-  ) {
-    ratelimit = formRatelimit;
-  } else {
-    ratelimit = publicRatelimit;
+    if (
+      pathname.startsWith('/api/auth') ||
+      pathname.startsWith('/admin/login') ||
+      pathname.startsWith('/api/login')
+    ) {
+      ratelimit = authRatelimit;
+    } else if (
+      pathname.startsWith('/api/warranty') ||
+      pathname.startsWith('/api/register') ||
+      pathname.startsWith('/api/comments') ||
+      pathname.startsWith('/api/certificate')
+    ) {
+      ratelimit = formRatelimit;
+    } else {
+      ratelimit = publicRatelimit;
+    }
+
+    const { success, limit, remaining, reset } = await ratelimit.limit(ip);
+
+    if (!success) {
+      return new NextResponse(
+        JSON.stringify({
+          error: 'Too Many Requests',
+          message: 'Забагато запитів. Спробуйте за хвилину.',
+        }),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-RateLimit-Limit': limit.toString(),
+            'X-RateLimit-Remaining': remaining.toString(),
+            'X-RateLimit-Reset': reset.toString(),
+            'Retry-After': Math.ceil((reset - Date.now()) / 1000).toString(),
+          },
+        }
+      );
+    }
+
+    const response = NextResponse.next();
+    response.headers.set('X-RateLimit-Limit', limit.toString());
+    response.headers.set('X-RateLimit-Remaining', remaining.toString());
+    response.headers.set('X-RateLimit-Reset', reset.toString());
+
+    return response;
+  } catch (error) {
+    // Якщо будь-що пішло не так — пропускаємо запит, не ламаємо сайт.
+    console.error('[middleware] error:', error);
+    return NextResponse.next();
   }
-
-  const { success, limit, remaining, reset } = await ratelimit.limit(ip);
-
-  if (!success) {
-    return new NextResponse(
-      JSON.stringify({
-        error: 'Too Many Requests',
-        message: 'Забагато запитів. Спробуйте за хвилину.',
-      }),
-      {
-        status: 429,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-RateLimit-Limit': limit.toString(),
-          'X-RateLimit-Remaining': remaining.toString(),
-          'X-RateLimit-Reset': reset.toString(),
-          'Retry-After': Math.ceil((reset - Date.now()) / 1000).toString(),
-        },
-      }
-    );
-  }
-
-  const response = NextResponse.next();
-  response.headers.set('X-RateLimit-Limit', limit.toString());
-  response.headers.set('X-RateLimit-Remaining', remaining.toString());
-  response.headers.set('X-RateLimit-Reset', reset.toString());
-
-  return response;
 }
 
-const config = {
+export const config = {
   matcher: [
     '/api/:path*',
     '/admin/:path*',
     '/service-panel/:path*',
   ],
 };
-
-module.exports = { middleware, config };
