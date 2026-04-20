@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import Navbar from '../components/Navbar';
 export default function HomePage() {
@@ -14,6 +14,78 @@ export default function HomePage() {
   const [focused, setFocused] = useState(null);
   const [fileName, setFileName] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
+
+  // ═══ Turnstile state ═══
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const turnstileRef = useRef(null);
+  const widgetIdRef = useRef(null);
+
+  // Завантаження скрипту Turnstile + рендер віджета
+  useEffect(() => {
+    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+    if (!siteKey) {
+      console.error('[Turnstile] NEXT_PUBLIC_TURNSTILE_SITE_KEY is not set');
+      return;
+    }
+
+    // Додаємо скрипт один раз
+    const existing = document.querySelector(
+      'script[src*="challenges.cloudflare.com/turnstile"]'
+    );
+    if (!existing) {
+      const script = document.createElement('script');
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+
+    // Чекаємо поки window.turnstile з'явиться, потім рендеримо
+    const renderWidget = () => {
+      if (!window.turnstile || !turnstileRef.current) {
+        setTimeout(renderWidget, 200);
+        return;
+      }
+      if (widgetIdRef.current) return; // вже рендерили
+
+      try {
+        widgetIdRef.current = window.turnstile.render(turnstileRef.current, {
+          sitekey: siteKey,
+          callback: (token) => {
+            setTurnstileToken(token);
+          },
+          'expired-callback': () => {
+            setTurnstileToken('');
+          },
+          'error-callback': () => {
+            setTurnstileToken('');
+          },
+          theme: 'auto',
+          language: 'uk',
+        });
+      } catch (err) {
+        console.error('[Turnstile] render failed:', err);
+      }
+    };
+
+    const timer = setTimeout(renderWidget, 300);
+    return () => {
+      clearTimeout(timer);
+      if (widgetIdRef.current && window.turnstile) {
+        try { window.turnstile.remove(widgetIdRef.current); } catch (e) {}
+        widgetIdRef.current = null;
+      }
+    };
+  }, []);
+
+  // Після успішної реєстрації треба скинути Turnstile для наступної заявки
+  const resetTurnstile = () => {
+    setTurnstileToken('');
+    if (widgetIdRef.current && window.turnstile) {
+      try { window.turnstile.reset(widgetIdRef.current); } catch (e) {}
+    }
+  };
+
   const generateCertNumber = () => {
     const now = new Date();
     return 'HS-' + now.getFullYear()
@@ -120,7 +192,6 @@ export default function HomePage() {
       doc.setFontSize(7);
       doc.setTextColor(255, 255, 255);
       doc.text('\u0422\u041E\u0412 \u00AB\u0414\u0416\u0406\u0415\u0421 \u041A\u041E\u041C\u0424\u041E\u0420\u0422 \u0421\u0406\u0421\u0422\u0415\u041C\u00BB \u2022 hecht-service.com.ua \u2022 garantiya@hecht-service.com.ua', w / 2, 294, { align: 'center' });
-      // Mobile-friendly download
       const pdfBlob = doc.output('blob');
       const blobUrl = URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
@@ -143,9 +214,30 @@ export default function HomePage() {
       setError('\u0411\u0443\u0434\u044C \u043B\u0430\u0441\u043A\u0430, \u0434\u0430\u0439\u0442\u0435 \u0437\u0433\u043E\u0434\u0443 \u043D\u0430 \u043E\u0431\u0440\u043E\u0431\u043A\u0443 \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u044C\u043D\u0438\u0445 \u0434\u0430\u043D\u0438\u0445');
       return;
     }
+    // ═══ Turnstile check ═══
+    if (!turnstileToken) {
+      setError('Будь ласка, підтвердіть, що ви не робот (галочка нижче)');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
+      // Крок 1: Перевіряємо Turnstile токен на сервері
+      const verifyRes = await fetch('/api/verify-warranty', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ turnstileToken }),
+      });
+
+      if (!verifyRes.ok) {
+        const verifyData = await verifyRes.json().catch(() => ({}));
+        setError(verifyData.error || 'Перевірка "Я не робот" не пройдена. Оновіть сторінку.');
+        resetTurnstile();
+        setLoading(false);
+        return;
+      }
+
+      // Крок 2: Звичайна логіка реєстрації гарантії
       const cert = generateCertNumber();
       const { data: existing } = await supabase
         .from('warranty_registrations')
@@ -239,7 +331,7 @@ export default function HomePage() {
               Збережіть PDF-сертифікат — він знадобиться при зверненні в сервіс. Гарантія діє з дати покупки.
             </p>
           </div>
-          <button onClick={() => { setSubmitted(false); setFormData({ firstName: '', lastName: '', email: '', phone: '', serialNumber: '', model: '', purchaseDate: '', consent: false }); setFileName(''); }} style={{
+          <button onClick={() => { setSubmitted(false); setFormData({ firstName: '', lastName: '', email: '', phone: '', serialNumber: '', model: '', purchaseDate: '', consent: false }); setFileName(''); resetTurnstile(); }} style={{
             padding: '13px 28px', background: 'transparent', color: 'var(--text2)', border: '1px solid var(--border)',
             borderRadius: 12, fontWeight: 500, fontSize: 14, cursor: 'pointer', fontFamily: "'Inter', sans-serif"
           }}>
@@ -351,7 +443,7 @@ export default function HomePage() {
           </div>
           <div style={{ height: 1, background: 'var(--border)', margin: '28px 0' }} />
           <div onClick={() => setFormData({ ...formData, consent: !formData.consent })}
-            style={{ display: 'flex', gap: 12, cursor: 'pointer', marginBottom: 28, alignItems: 'flex-start' }}>
+            style={{ display: 'flex', gap: 12, cursor: 'pointer', marginBottom: 20, alignItems: 'flex-start' }}>
             <div style={{
               width: 22, height: 22, minWidth: 22, borderRadius: 7,
               border: '1.5px solid ' + (formData.consent ? 'var(--red)' : 'var(--border)'),
@@ -367,6 +459,12 @@ export default function HomePage() {
               Підтверджую, що інформація достовірна, техніка придбана у офіційного дилера Hecht.
             </span>
           </div>
+
+          {/* ═══ Turnstile widget ═══ */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20, minHeight: 65 }}>
+            <div ref={turnstileRef} />
+          </div>
+
           {error && (
             <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14, color: 'var(--red)' }}>
               {error}
