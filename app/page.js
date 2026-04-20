@@ -390,7 +390,7 @@ export default function HomePage() {
             <a href="/pravova-informatsiya" style={{ fontSize: 12, color: 'var(--text3)', textDecoration: 'none' }}>Правова інформація</a>
             <a href="/umovi-pryymky" style={{ fontSize: 12, color: 'var(--text3)', textDecoration: 'none' }}>Умови приймання в сервіс</a>
           </div>
-          <p style={{ fontSize: 11, color: 'var(--text3)' }}>© 2026 hecht-service.com.ua — Офіційний сервісний центр Hecht в Україні</p>
+          <p style={{ fontSize: 11, color: 'var(--text3)' }}>© 2026 hecht-service.com.ua — Офіційний сервісний центр Hecht в Україні</p><p style={{ fontSize: 11, marginTop: 8 }}><a href="https://stats.uptimerobot.com/lVMK2Fn6hC" target="_blank" rel="noopener" style={{ color: 'var(--green)', textDecoration: 'none', fontWeight: 500 }}>🟢 Статус сервера</a></p>
         </footer>
       </div>
     </div>
