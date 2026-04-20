@@ -1,0 +1,8 @@
+Contact: mailto:security@hecht.com.ua
+Expires: 2027-04-20T00:00:00.000Z
+Preferred-Languages: uk, en
+Canonical: https://hecht-service.com.ua/.well-known/security.txt
+
+# Hecht Service Ukraine — Responsible Disclosure
+# Якщо ви знайшли вразливість — повідомте нас ДО публікації.
+# Ми відповідаємо впродовж 48 годин.
