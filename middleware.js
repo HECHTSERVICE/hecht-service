@@ -1,38 +1,77 @@
 /**
  * Hecht Service — Next.js Edge Middleware
- * Rate limiting через Upstash Redis.
- * 
- * ВАЖЛИВО: middleware ЗАВЖДИ працює на Edge Runtime, тому використовує ESM imports
- * (import/export), а не CommonJS (require/module.exports).
+ * Rate limiting через Upstash Redis з LAZY INITIALIZATION.
+ *
+ * ЧОМУ LAZY INIT:
+ *  - Redis-клієнт НЕ створюється на рівні модуля (це падало на Edge).
+ *  - Створюється при першому запиті, у try/catch.
+ *  - Якщо ініціалізація провалилася — запит пропускається без блокування.
+ *
+ * Принцип: краще живий сайт без rate limit, ніж мертвий сайт з rate limit.
  */
 
 import { NextResponse } from 'next/server';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
 
-// Публічні роути: 30 запитів / 10 секунд з одного IP
-const publicRatelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(30, '10 s'),
-  analytics: true,
-  prefix: 'hecht:ratelimit:public',
-});
+// Кеш для лімітерів — щоб не створювати їх на кожному запиті
+let cachedLimiters = null;
+let initFailed = false;
 
-// Форма реєстрації гарантії: 5 спроб / хвилина
-const formRatelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(5, '60 s'),
-  analytics: true,
-  prefix: 'hecht:ratelimit:form',
-});
+/**
+ * Lazy init: створюємо лімітери тільки при першому запиті.
+ * Якщо щось зламається — запам'ятовуємо це і більше не пробуємо.
+ */
+async function getLimiters() {
+  if (cachedLimiters) return cachedLimiters;
+  if (initFailed) return null;
 
-// Адмінка / логін: 5 спроб / 5 хвилин
-const authRatelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(5, '300 s'),
-  analytics: true,
-  prefix: 'hecht:ratelimit:auth',
-});
+  try {
+    // Динамічний імпорт — модулі завантажуються тільки коли треба
+    const { Ratelimit } = await import('@upstash/ratelimit');
+    const { Redis } = await import('@upstash/redis');
+
+    // Перевірка наявності env-змінних
+    if (
+      !process.env.UPSTASH_REDIS_REST_URL ||
+      !process.env.UPSTASH_REDIS_REST_TOKEN
+    ) {
+      console.warn('[middleware] Upstash env vars missing, skipping rate limit');
+      initFailed = true;
+      return null;
+    }
+
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+
+    cachedLimiters = {
+      public: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(30, '10 s'),
+        analytics: true,
+        prefix: 'hecht:ratelimit:public',
+      }),
+      form: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(5, '60 s'),
+        analytics: true,
+        prefix: 'hecht:ratelimit:form',
+      }),
+      auth: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(5, '300 s'),
+        analytics: true,
+        prefix: 'hecht:ratelimit:auth',
+      }),
+    };
+
+    return cachedLimiters;
+  } catch (err) {
+    console.error('[middleware] init failed:', err);
+    initFailed = true;
+    return null;
+  }
+}
 
 function getIp(request) {
   const forwardedFor = request.headers.get('x-forwarded-for');
@@ -42,31 +81,37 @@ function getIp(request) {
   return '127.0.0.1';
 }
 
+function pickLimiter(limiters, pathname) {
+  if (
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/admin/login') ||
+    pathname.startsWith('/api/login')
+  ) {
+    return limiters.auth;
+  }
+  if (
+    pathname.startsWith('/api/warranty') ||
+    pathname.startsWith('/api/register') ||
+    pathname.startsWith('/api/comments') ||
+    pathname.startsWith('/api/certificate')
+  ) {
+    return limiters.form;
+  }
+  return limiters.public;
+}
+
 export async function middleware(request) {
-  // Захист від падіння: якщо Redis не відповідає — НЕ блокуємо сайт,
-  // просто пропускаємо запит. Краще без захисту, ніж зламаний сайт.
   try {
+    const limiters = await getLimiters();
+
+    // Якщо лімітери не створилися — пропускаємо запит, сайт працює
+    if (!limiters) {
+      return NextResponse.next();
+    }
+
     const ip = getIp(request);
     const pathname = request.nextUrl.pathname;
-
-    let ratelimit;
-
-    if (
-      pathname.startsWith('/api/auth') ||
-      pathname.startsWith('/admin/login') ||
-      pathname.startsWith('/api/login')
-    ) {
-      ratelimit = authRatelimit;
-    } else if (
-      pathname.startsWith('/api/warranty') ||
-      pathname.startsWith('/api/register') ||
-      pathname.startsWith('/api/comments') ||
-      pathname.startsWith('/api/certificate')
-    ) {
-      ratelimit = formRatelimit;
-    } else {
-      ratelimit = publicRatelimit;
-    }
+    const ratelimit = pickLimiter(limiters, pathname);
 
     const { success, limit, remaining, reset } = await ratelimit.limit(ip);
 
@@ -80,24 +125,23 @@ export async function middleware(request) {
           status: 429,
           headers: {
             'Content-Type': 'application/json',
-            'X-RateLimit-Limit': limit.toString(),
-            'X-RateLimit-Remaining': remaining.toString(),
-            'X-RateLimit-Reset': reset.toString(),
-            'Retry-After': Math.ceil((reset - Date.now()) / 1000).toString(),
+            'X-RateLimit-Limit': String(limit),
+            'X-RateLimit-Remaining': String(remaining),
+            'X-RateLimit-Reset': String(reset),
+            'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
           },
         }
       );
     }
 
     const response = NextResponse.next();
-    response.headers.set('X-RateLimit-Limit', limit.toString());
-    response.headers.set('X-RateLimit-Remaining', remaining.toString());
-    response.headers.set('X-RateLimit-Reset', reset.toString());
-
+    response.headers.set('X-RateLimit-Limit', String(limit));
+    response.headers.set('X-RateLimit-Remaining', String(remaining));
+    response.headers.set('X-RateLimit-Reset', String(reset));
     return response;
-  } catch (error) {
-    // Якщо будь-що пішло не так — пропускаємо запит, не ламаємо сайт.
-    console.error('[middleware] error:', error);
+  } catch (err) {
+    // Остання лінія оборони — якщо що завгодно пішло не так, просто пропускаємо
+    console.error('[middleware] runtime error:', err);
     return NextResponse.next();
   }
 }
