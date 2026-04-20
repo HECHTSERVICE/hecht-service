@@ -187,8 +187,8 @@ export default function AdminPage() {
         </div>
       </div>
       {selectedCard && (
-        <div onClick={e => { if (e.target === e.currentTarget) setSelectedCard(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ background: 'var(--card-solid)', border: '1px solid var(--border)', borderRadius: 24, maxWidth: 640, width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.2)', animation: 'fadeUp 0.3s ease' }}>
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setSelectedCard(null); }} style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div className="modal-card" style={{ borderRadius: 24, maxWidth: 640, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ padding: '28px 28px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>Картка — {selectedCard.cert_number}</h2>
               <button onClick={() => setSelectedCard(null)} style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 18, color: 'var(--text3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
