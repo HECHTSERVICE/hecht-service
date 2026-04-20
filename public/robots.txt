@@ -1,0 +1,26 @@
+# Hecht Service Ukraine — robots.txt
+# https://hecht-service.com.ua
+
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /api/
+Disallow: /service-panel
+Disallow: /service-panel/*
+Disallow: /_next/
+
+# Забороняємо агресивним SEO-ботам
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+Sitemap: https://hecht-service.com.ua/sitemap.xml
