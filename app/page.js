@@ -12,7 +12,6 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [focused, setFocused] = useState(null);
-  const [fileName, setFileName] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
 
   // ═══ Turnstile state ═══
@@ -331,7 +330,7 @@ export default function HomePage() {
               Збережіть PDF-сертифікат — він знадобиться при зверненні в сервіс. Гарантія діє з дати покупки.
             </p>
           </div>
-          <button onClick={() => { setSubmitted(false); setFormData({ firstName: '', lastName: '', email: '', phone: '', serialNumber: '', model: '', purchaseDate: '', consent: false }); setFileName(''); resetTurnstile(); }} style={{
+          <button onClick={() => { setSubmitted(false); setFormData({ firstName: '', lastName: '', email: '', phone: '', serialNumber: '', model: '', purchaseDate: '', consent: false }); resetTurnstile(); }} style={{
             padding: '13px 28px', background: 'transparent', color: 'var(--text2)', border: '1px solid var(--border)',
             borderRadius: 12, fontWeight: 500, fontSize: 14, cursor: 'pointer', fontFamily: "'Inter', sans-serif"
           }}>
@@ -421,26 +420,6 @@ export default function HomePage() {
                 style={inputStyle('purchaseDate')} />
             </div>
           </div>
-          <div style={{ marginTop: 14, marginBottom: 14 }}>
-            <label style={labelStyle}>Чек / накладна <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>(необов'язково)</span></label>
-            <label style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              border: '1.5px dashed var(--border)', borderRadius: 14, padding: '28px 20px',
-              cursor: 'pointer', background: 'var(--input)', textAlign: 'center'
-            }}>
-              <input type="file" accept=".jpg,.jpeg,.png,.pdf" style={{ display: 'none' }}
-                onChange={e => setFileName(e.target.files?.[0]?.name || '')} />
-              {fileName ? (
-                <span style={{ fontSize: 14, color: 'var(--green)', fontWeight: 500 }}>📎 {fileName}</span>
-              ) : (
-                <>
-                  <span style={{ fontSize: 24, marginBottom: 6, opacity: 0.4 }}>📄</span>
-                  <span style={{ fontSize: 14, color: 'var(--text2)' }}>Натисніть або перетягніть файл</span>
-                  <span style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>JPG, PNG, PDF — до 5 МБ</span>
-                </>
-              )}
-            </label>
-          </div>
           <div style={{ height: 1, background: 'var(--border)', margin: '28px 0' }} />
           <div onClick={() => setFormData({ ...formData, consent: !formData.consent })}
             style={{ display: 'flex', gap: 12, cursor: 'pointer', marginBottom: 20, alignItems: 'flex-start' }}>
@@ -479,7 +458,7 @@ export default function HomePage() {
             {loading ? 'Реєстрація...' : 'Зареєструвати гарантію'}
           </button>
           <p style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center', marginTop: 16 }}>
-            Рекомендуємо прикріпити чек — це прискорить обробку гарантії
+            Сертифікат автоматично надійде на вашу пошту
           </p>
         </form>
         <footer style={{ padding: '36px 0 56px', textAlign: 'center', borderTop: '1px solid var(--border)', marginTop: 40 }}>
