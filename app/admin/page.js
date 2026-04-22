@@ -29,15 +29,15 @@ export default function AdminPage() {
     e.preventDefault();
     setLoginError('');
     if (tfaStep === 'password') {
-      if (password === 'g91!m#HIU6@aJ9') {
-        setTfaSending(true);
-        try {
-          const res = await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'send' }) });
-          const data = await res.json();
-          if (data.success) { setTfaStep('code'); } else { setLoginError('Помилка відправки коду'); }
-        } catch (err) { setLoginError('Помилка з\'єднання'); }
-        finally { setTfaSending(false); }
-      } else { setLoginError('Невірний пароль'); }
+      if (!password) { setLoginError('Введіть пароль'); return; }
+      setTfaSending(true);
+      try {
+        const res = await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', password }) });
+        const data = await res.json();
+        if (data.success) { setTfaStep('code'); setPassword(''); }
+        else { setLoginError(data.error || 'Невірний пароль'); }
+      } catch (err) { setLoginError('Помилка з\'єднання'); }
+      finally { setTfaSending(false); }
     } else if (tfaStep === 'code') {
       if (!tfaCode.trim()) { setLoginError('Введіть код'); return; }
       setTfaSending(true);
