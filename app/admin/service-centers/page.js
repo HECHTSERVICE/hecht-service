@@ -1,6 +1,5 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { supabase } from '../../../lib/supabase';
 import Navbar from '../../../components/Navbar';
 
 export default function ServiceCentersPage() {
@@ -34,69 +33,105 @@ export default function ServiceCentersPage() {
   }, [loggedIn]);
 
   const loadCenters = async () => {
-    const { data } = await supabase
-      .from('service_centers')
-      .select('*, users(id, username, full_name, active)')
-      .order('city');
-    if (data) setCenters(data);
+    try {
+      const res = await fetch('/api/admin/service-centers');
+      const data = await res.json();
+      if (res.ok && data.centers) setCenters(data.centers);
+    } catch (err) {
+      setError('Не вдалося завантажити список');
+      setTimeout(() => setError(''), 4000);
+    }
   };
 
   const addCenter = async (e) => {
     e.preventDefault();
     setError('');
-    const { error: err } = await supabase.from('service_centers').insert({
-      city: centerForm.city.trim(),
-      center_name: centerForm.center_name.trim(),
-      contact_person: centerForm.contact_person.trim(),
-      phone: centerForm.phone.trim(),
-      email: centerForm.email.trim(),
-    });
-    if (err) { setError('Помилка додавання'); return; }
-    setCenterForm({ city: '', center_name: '', contact_person: '', phone: '', email: '' });
-    setShowAddCenter(false);
-    setSuccess('Сервісний центр додано!');
-    setTimeout(() => setSuccess(''), 3000);
-    await loadCenters();
+    try {
+      const res = await fetch('/api/admin/service-centers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create-center',
+          city: centerForm.city,
+          center_name: centerForm.center_name,
+          contact_person: centerForm.contact_person,
+          phone: centerForm.phone,
+          email: centerForm.email,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Помилка додавання'); return; }
+      setCenterForm({ city: '', center_name: '', contact_person: '', phone: '', email: '' });
+      setShowAddCenter(false);
+      setSuccess('Сервісний центр додано!');
+      setTimeout(() => setSuccess(''), 3000);
+      await loadCenters();
+    } catch (err) {
+      setError('Помилка мережі');
+    }
   };
 
   const deleteCenter = async (id, name) => {
     if (!confirm('Видалити сервісний центр "' + name + '"? Акаунти працівників також будуть видалені.')) return;
-    await supabase.from('users').delete().eq('service_center_id', id);
-    const { error: err } = await supabase.from('service_centers').delete().eq('id', id);
-    if (err) { setError('Неможливо видалити — до центру прив\'язані заявки'); setTimeout(() => setError(''), 4000); return; }
-    setSuccess('Сервісний центр видалено');
-    setTimeout(() => setSuccess(''), 3000);
-    await loadCenters();
+    try {
+      const res = await fetch('/api/admin/service-centers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-center', id }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Помилка видалення'); setTimeout(() => setError(''), 4000); return; }
+      setSuccess('Сервісний центр видалено');
+      setTimeout(() => setSuccess(''), 3000);
+      await loadCenters();
+    } catch (err) {
+      setError('Помилка мережі');
+    }
   };
 
   const addUser = async (e) => {
     e.preventDefault();
     setError('');
-    const { error: err } = await supabase.from('users').insert({
-      username: userForm.username.trim(),
-      password_hash: userForm.password,
-      role: 'service_center',
-      service_center_id: showAddUser,
-      full_name: userForm.full_name.trim(),
-      active: true,
-    });
-    if (err) {
-      setError(err.message.includes('unique') ? 'Такий логін вже існує' : 'Помилка створення акаунту');
-      return;
+    try {
+      const res = await fetch('/api/admin/service-centers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add-user',
+          username: userForm.username,
+          password: userForm.password,
+          full_name: userForm.full_name,
+          service_center_id: showAddUser,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Помилка створення акаунту'); return; }
+      setUserForm({ username: '', password: '', full_name: '' });
+      setShowAddUser(null);
+      setSuccess('Акаунт створено!');
+      setTimeout(() => setSuccess(''), 3000);
+      await loadCenters();
+    } catch (err) {
+      setError('Помилка мережі');
     }
-    setUserForm({ username: '', password: '', full_name: '' });
-    setShowAddUser(null);
-    setSuccess('Акаунт створено!');
-    setTimeout(() => setSuccess(''), 3000);
-    await loadCenters();
   };
 
   const deleteUser = async (userId, username) => {
     if (!confirm('Видалити акаунт "' + username + '"?')) return;
-    await supabase.from('users').delete().eq('id', userId);
-    setSuccess('Акаунт видалено');
-    setTimeout(() => setSuccess(''), 3000);
-    await loadCenters();
+    try {
+      const res = await fetch('/api/admin/service-centers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-user', user_id: userId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Помилка видалення'); setTimeout(() => setError(''), 4000); return; }
+      setSuccess('Акаунт видалено');
+      setTimeout(() => setSuccess(''), 3000);
+      await loadCenters();
+    } catch (err) {
+      setError('Помилка мережі');
+    }
   };
 
   const handleLogout = async () => {
