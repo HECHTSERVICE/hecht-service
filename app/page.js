@@ -1,6 +1,5 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
 import Navbar from '../components/Navbar';
 export default function HomePage() {
   const [formData, setFormData] = useState({
@@ -85,15 +84,6 @@ export default function HomePage() {
     }
   };
 
-  const generateCertNumber = () => {
-    const now = new Date();
-    return 'HS-' + now.getFullYear()
-      + String(now.getMonth() + 1).padStart(2, '0')
-      + String(now.getDate()).padStart(2, '0')
-      + String(now.getHours()).padStart(2, '0')
-      + String(now.getMinutes()).padStart(2, '0')
-      + String(now.getSeconds()).padStart(2, '0');
-  };
   const generatePDF = async (cert) => {
     setPdfLoading(true);
     try {
@@ -207,84 +197,77 @@ export default function HomePage() {
       setPdfLoading(false);
     }
   };
+
+  // ═══════════════════════════════════════════════════════════════
+  // handleSubmit — ОДИН fetch на /api/warranty/register
+  // ───────────────────────────────────────────────────────────────
+  // Раніше клієнт робив: 2x supabase.from() + fetch /api/verify-warranty
+  // + fetch /api/send-email (4 мережевих виклики, прямий доступ до БД
+  // через ANON key). Тепер — ОДИН виклик, вся логіка на сервері через
+  // Service Role key. Cert number генерує сервер і повертає у response.
+  // ═══════════════════════════════════════════════════════════════
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.consent) {
       setError('\u0411\u0443\u0434\u044C \u043B\u0430\u0441\u043A\u0430, \u0434\u0430\u0439\u0442\u0435 \u0437\u0433\u043E\u0434\u0443 \u043D\u0430 \u043E\u0431\u0440\u043E\u0431\u043A\u0443 \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u044C\u043D\u0438\u0445 \u0434\u0430\u043D\u0438\u0445');
       return;
     }
-    // ═══ Turnstile check ═══
     if (!turnstileToken) {
-      setError('Будь ласка, підтвердіть, що ви не робот (галочка нижче)');
+      setError('\u0411\u0443\u0434\u044C \u043B\u0430\u0441\u043A\u0430, \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0456\u0442\u044C, \u0449\u043E \u0432\u0438 \u043D\u0435 \u0440\u043E\u0431\u043E\u0442 (\u0433\u0430\u043B\u043E\u0447\u043A\u0430 \u043D\u0438\u0436\u0447\u0435)');
       return;
     }
+
     setLoading(true);
     setError('');
+
     try {
-      // Крок 1: Перевіряємо Turnstile токен на сервері
-      const verifyRes = await fetch('/api/verify-warranty', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ turnstileToken }),
-      });
-
-      if (!verifyRes.ok) {
-        const verifyData = await verifyRes.json().catch(() => ({}));
-        setError(verifyData.error || 'Перевірка "Я не робот" не пройдена. Оновіть сторінку.');
-        resetTurnstile();
-        setLoading(false);
-        return;
-      }
-
-      // Крок 2: Звичайна логіка реєстрації гарантії
-      const cert = generateCertNumber();
-      const { data: existing } = await supabase
-        .from('warranty_registrations')
-        .select('id')
-        .eq('serial_number', formData.serialNumber.toUpperCase())
-        .limit(1);
-      if (existing && existing.length > 0) {
-        setError('\u0426\u0435\u0439 \u0441\u0435\u0440\u0456\u0439\u043D\u0438\u0439 \u043D\u043E\u043C\u0435\u0440 \u0432\u0436\u0435 \u0437\u0430\u0440\u0435\u0454\u0441\u0442\u0440\u043E\u0432\u0430\u043D\u043E \u0440\u0430\u043D\u0456\u0448\u0435!');
-        setLoading(false);
-        return;
-      }
-      const { error: insertError } = await supabase
-        .from('warranty_registrations')
-        .insert({
-          cert_number: cert,
-          first_name: formData.firstName.trim(),
-          last_name: formData.lastName.trim(),
-          phone: formData.phone.trim(),
-          email: formData.email.trim(),
-          serial_number: formData.serialNumber.toUpperCase().trim(),
-          model: formData.model.trim(),
-          purchase_date: formData.purchaseDate,
-          status: '\u041D\u043E\u0432\u0430'
-        });
-      if (insertError) throw insertError;
-      setCertNumber(cert);
-      setSubmitted(true);
-      fetch('/api/send-email', {
+      const res = await fetch('/api/warranty/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          certNumber: cert,
-          firstName: formData.firstName.trim(),
-          lastName: formData.lastName.trim(),
-          email: formData.email.trim(),
-          phone: formData.phone.trim(),
-          model: formData.model.trim(),
-          serialNumber: formData.serialNumber.toUpperCase().trim(),
-          purchaseDate: formData.purchaseDate
-        })
-      }).catch(err => console.error('Email send error:', err));
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          phone: formData.phone,
+          email: formData.email,
+          serialNumber: formData.serialNumber,
+          model: formData.model,
+          purchaseDate: formData.purchaseDate,
+          turnstileToken,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      // Handle non-2xx responses
+      if (!res.ok || !data.success) {
+        // 429 — rate limit від middleware
+        if (res.status === 429) {
+          setError('\u0417\u0430\u0431\u0430\u0433\u0430\u0442\u043E \u0437\u0430\u043F\u0438\u0442\u0456\u0432. \u0417\u0430\u0447\u0435\u043A\u0430\u0439\u0442\u0435 1 \u0445\u0432\u0438\u043B\u0438\u043D\u0443 \u0456 \u0441\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0437\u043D\u043E\u0432\u0443.');
+        } else {
+          setError(data.error || '\u041F\u043E\u043C\u0438\u043B\u043A\u0430 \u043F\u0440\u0438 \u0440\u0435\u0454\u0441\u0442\u0440\u0430\u0446\u0456\u0457. \u0421\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u0456\u0437\u043D\u0456\u0448\u0435.');
+        }
+        // При Turnstile fail — скидаємо токен, треба новий
+        if (res.status === 403) {
+          resetTurnstile();
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Success — сервер повернув cert_number
+      if (data.emailSent === false) {
+        console.warn('[register] Email not sent, but warranty saved:', data.certNumber);
+      }
+      setCertNumber(data.certNumber);
+      setSubmitted(true);
     } catch (err) {
-      console.error(err);
-      setError('\u041F\u043E\u043C\u0438\u043B\u043A\u0430 \u043F\u0440\u0438 \u0440\u0435\u0454\u0441\u0442\u0440\u0430\u0446\u0456\u0457. \u0421\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u0456\u0437\u043D\u0456\u0448\u0435.');
+      console.error('[register] fetch error:', err);
+      setError('\u041F\u043E\u043C\u0438\u043B\u043A\u0430 \u043C\u0435\u0440\u0435\u0436\u0456. \u041F\u0435\u0440\u0435\u0432\u0456\u0440\u0442\u0435 \u0437\'\u0454\u0434\u043D\u0430\u043D\u043D\u044F \u0456 \u0441\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0437\u043D\u043E\u0432\u0443.');
     } finally {
       setLoading(false);
     }
   };
+
   const inputStyle = (key) => ({
     width: '100%', padding: '14px 16px', fontSize: 15,
     fontFamily: key === 'serialNumber' ? "'Space Mono', monospace" : "'Inter', sans-serif",
