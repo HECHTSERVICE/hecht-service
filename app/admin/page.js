@@ -1,6 +1,5 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../lib/supabase';
 import Navbar from '../../components/Navbar';
 export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -66,25 +65,110 @@ export default function AdminPage() {
     } catch (err) {}
     window.location.href = '/admin';
   };
+
+  // ═══════════════════════════════════════════════════════════════
+  // Data loading — через /api/admin/* замість прямого supabase.
+  // Якщо сервер повертає 401 — сесія пропала, показуємо login screen.
+  // ═══════════════════════════════════════════════════════════════
   const loadData = async () => {
-    const { data } = await supabase.from('warranty_registrations').select('*, service_centers(city, center_name), comment_list:comments(id)').order('registration_date', { ascending: false });
-    if (data) {
-      const withCounts = data.map(r => ({ ...r, comment_count: r.comment_list ? r.comment_list.length : 0 }));
-      setRegistrations(withCounts);
-      setMetrics({ total: withCounts.length, nova: withCounts.filter(r => r.status === 'Нова').length, work: withCounts.filter(r => r.status === 'В роботі').length, done: withCounts.filter(r => r.status === 'Видана' || r.status === 'Ремонт завершено').length });
+    try {
+      const res = await fetch('/api/admin/warranties');
+      if (res.status === 401) { setLoggedIn(false); return; }
+      if (!res.ok) throw new Error('Failed to load warranties');
+      const data = await res.json();
+      setRegistrations(data.warranties || []);
+      setMetrics(data.metrics || { total: 0, nova: 0, work: 0, done: 0 });
+    } catch (err) {
+      console.error('[admin] loadData error:', err);
     }
   };
-  const loadCenters = async () => { const { data } = await supabase.from('service_centers').select('*').order('city'); if (data) setCenters(data); };
-  const loadComments = async (warrantyId) => { const { data } = await supabase.from('comments').select('*').eq('warranty_id', warrantyId).order('created_at', { ascending: true }); if (data) setComments(data); };
-  const openCard = async (reg) => { setSelectedCard(reg); await loadComments(reg.id); setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 100); };
-  const sendComment = async () => {
-    if (!newComment.trim() || !selectedCard) return;
-    await supabase.from('comments').insert({ warranty_id: selectedCard.id, author_name: 'Hecht', author_role: 'admin', message: newComment.trim() });
-    setNewComment(''); await loadComments(selectedCard.id); await loadData();
+
+  const loadCenters = async () => {
+    try {
+      const res = await fetch('/api/admin/service-centers');
+      if (res.status === 401) { setLoggedIn(false); return; }
+      if (!res.ok) throw new Error('Failed to load centers');
+      const data = await res.json();
+      setCenters(data.centers || []);
+    } catch (err) {
+      console.error('[admin] loadCenters error:', err);
+    }
+  };
+
+  const loadComments = async (warrantyId) => {
+    try {
+      const res = await fetch(`/api/admin/warranties/${warrantyId}/comments`);
+      if (res.status === 401) { setLoggedIn(false); return; }
+      if (!res.ok) throw new Error('Failed to load comments');
+      const data = await res.json();
+      setComments(data.comments || []);
+    } catch (err) {
+      console.error('[admin] loadComments error:', err);
+    }
+  };
+
+  const openCard = async (reg) => {
+    setSelectedCard(reg);
+    await loadComments(reg.id);
     setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 100);
   };
-  const updateStatus = async (id, status) => { await supabase.from('warranty_registrations').update({ status, last_updated: new Date().toISOString() }).eq('id', id); if (selectedCard && selectedCard.id === id) setSelectedCard({ ...selectedCard, status }); await loadData(); };
-  const assignCenter = async (id, centerId) => { await supabase.from('warranty_registrations').update({ service_center_id: centerId || null, last_updated: new Date().toISOString() }).eq('id', id); await loadData(); };
+
+  const sendComment = async () => {
+    if (!newComment.trim() || !selectedCard) return;
+    try {
+      const res = await fetch(`/api/admin/warranties/${selectedCard.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: newComment.trim() }),
+      });
+      if (res.status === 401) { setLoggedIn(false); return; }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || 'Failed to send comment');
+      }
+      setNewComment('');
+      await loadComments(selectedCard.id);
+      await loadData();
+      setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 100);
+    } catch (err) {
+      console.error('[admin] sendComment error:', err);
+      alert('Не вдалося надіслати коментар. Спробуйте ще раз.');
+    }
+  };
+
+  const updateStatus = async (id, status) => {
+    try {
+      const res = await fetch(`/api/admin/warranties/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (res.status === 401) { setLoggedIn(false); return; }
+      if (!res.ok) throw new Error('Failed to update status');
+      if (selectedCard && selectedCard.id === id) setSelectedCard({ ...selectedCard, status });
+      await loadData();
+    } catch (err) {
+      console.error('[admin] updateStatus error:', err);
+      alert('Не вдалося оновити статус.');
+    }
+  };
+
+  const assignCenter = async (id, centerId) => {
+    try {
+      const res = await fetch(`/api/admin/warranties/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service_center_id: centerId }),
+      });
+      if (res.status === 401) { setLoggedIn(false); return; }
+      if (!res.ok) throw new Error('Failed to assign center');
+      await loadData();
+    } catch (err) {
+      console.error('[admin] assignCenter error:', err);
+      alert('Не вдалося призначити сервісний центр.');
+    }
+  };
+
   const exportExcel = () => {
     const headers = ['Дата','Сертифікат','Ім\'я','Прізвище','Телефон','Email','Модель','Серійний номер','Статус','Сервісний центр'];
     const rows = registrations.map(r => [r.registration_date ? new Date(r.registration_date).toLocaleDateString('uk-UA') : '', r.cert_number, r.first_name, r.last_name, r.phone, r.email, r.model, r.serial_number, r.status, r.service_centers ? r.service_centers.city + ' — ' + r.service_centers.center_name : '']);
