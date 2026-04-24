@@ -14,12 +14,19 @@ export default function ServiceCentersPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const s = sessionStorage.getItem('hecht_admin');
-    if (s === 'true') {
-      setLoggedIn(true);
-    } else {
-      window.location.href = '/admin';
-    }
+    (async () => {
+      try {
+        const res = await fetch('/api/session');
+        const data = await res.json();
+        if (data.valid && data.role === 'admin') {
+          setLoggedIn(true);
+        } else {
+          window.location.href = '/admin';
+        }
+      } catch (err) {
+        window.location.href = '/admin';
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -92,6 +99,13 @@ export default function ServiceCentersPage() {
     await loadCenters();
   };
 
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) });
+    } catch (err) {}
+    window.location.href = '/admin';
+  };
+
   const inputStyle = {
     width: '100%', padding: '12px 16px', fontSize: 14,
     background: 'var(--input)', border: '1px solid var(--border)',
@@ -113,7 +127,7 @@ export default function ServiceCentersPage() {
             background: 'var(--card)', fontSize: 13, fontWeight: 500, color: 'var(--text2)',
             textDecoration: 'none', fontFamily: "'Inter', sans-serif"
           }}>← Адмін-панель</a>
-          <button onClick={() => { sessionStorage.removeItem('hecht_admin'); window.location.href = '/admin'; }} style={{
+          <button onClick={handleLogout} style={{
             padding: '8px 16px', borderRadius: 10, background: 'var(--red)', color: '#fff',
             border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'Inter', sans-serif"
           }}>Вийти</button>
