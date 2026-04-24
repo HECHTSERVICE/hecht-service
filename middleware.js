@@ -1,35 +1,27 @@
 /**
  * Hecht Service — Next.js Edge Middleware
- * Rate limiting через Upstash Redis з LAZY INITIALIZATION.
  *
- * ЧОМУ LAZY INIT:
- *  - Redis-клієнт НЕ створюється на рівні модуля (це падало на Edge).
- *  - Створюється при першому запиті, у try/catch.
- *  - Якщо ініціалізація провалилася — запит пропускається без блокування.
+ * 1. Rate limiting через Upstash Redis (lazy init, graceful degrade)
+ * 2. Admin route protection — /admin/* (крім root /admin login page)
+ *    вимагає валідний HTTP-only cookie
  *
  * Принцип: краще живий сайт без rate limit, ніж мертвий сайт з rate limit.
  */
 
 import { NextResponse } from 'next/server';
+import { getSession } from './lib/auth';
 
-// Кеш для лімітерів — щоб не створювати їх на кожному запиті
 let cachedLimiters = null;
 let initFailed = false;
 
-/**
- * Lazy init: створюємо лімітери тільки при першому запиті.
- * Якщо щось зламається — запам'ятовуємо це і більше не пробуємо.
- */
 async function getLimiters() {
   if (cachedLimiters) return cachedLimiters;
   if (initFailed) return null;
 
   try {
-    // Динамічний імпорт — модулі завантажуються тільки коли треба
     const { Ratelimit } = await import('@upstash/ratelimit');
     const { Redis } = await import('@upstash/redis');
 
-    // Перевірка наявності env-змінних
     if (
       !process.env.UPSTASH_REDIS_REST_URL ||
       !process.env.UPSTASH_REDIS_REST_TOKEN
@@ -82,37 +74,58 @@ function getIp(request) {
 }
 
 function pickLimiter(limiters, pathname) {
+  // Auth limiter — всі auth endpoints
   if (
+    pathname.startsWith('/api/verify') ||
+    pathname.startsWith('/api/session') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/admin/login') ||
     pathname.startsWith('/api/login')
   ) {
     return limiters.auth;
   }
+  // Form limiter — публічні submission endpoints
   if (
     pathname.startsWith('/api/warranty') ||
     pathname.startsWith('/api/register') ||
     pathname.startsWith('/api/comments') ||
-    pathname.startsWith('/api/certificate')
+    pathname.startsWith('/api/certificate') ||
+    pathname.startsWith('/api/send-email')
   ) {
     return limiters.form;
   }
   return limiters.public;
 }
 
+// Чи потрібен admin cookie для цього шляху
+function needsAdminAuth(pathname) {
+  // /admin — це login page, не захищаємо
+  if (pathname === '/admin' || pathname === '/admin/') return false;
+  // /admin/* — захищаємо
+  return pathname.startsWith('/admin/');
+}
+
 export async function middleware(request) {
   try {
-    const limiters = await getLimiters();
+    const pathname = request.nextUrl.pathname;
 
-    // Якщо лімітери не створилися — пропускаємо запит, сайт працює
+    // ── 1. Admin route guard (до rate limit)
+    if (needsAdminAuth(pathname)) {
+      const session = await getSession(request);
+      if (!session || session.role !== 'admin') {
+        const loginUrl = new URL('/admin', request.url);
+        return NextResponse.redirect(loginUrl);
+      }
+    }
+
+    // ── 2. Rate limiting
+    const limiters = await getLimiters();
     if (!limiters) {
       return NextResponse.next();
     }
 
     const ip = getIp(request);
-    const pathname = request.nextUrl.pathname;
     const ratelimit = pickLimiter(limiters, pathname);
-
     const { success, limit, remaining, reset } = await ratelimit.limit(ip);
 
     if (!success) {
@@ -140,7 +153,6 @@ export async function middleware(request) {
     response.headers.set('X-RateLimit-Reset', String(reset));
     return response;
   } catch (err) {
-    // Остання лінія оборони — якщо що завгодно пішло не так, просто пропускаємо
     console.error('[middleware] runtime error:', err);
     return NextResponse.next();
   }
