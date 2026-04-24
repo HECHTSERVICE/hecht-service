@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import Navbar from '../../components/Navbar';
 export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(true);
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [tfaStep, setTfaStep] = useState('password');
@@ -19,8 +20,17 @@ export default function AdminPage() {
   const [metrics, setMetrics] = useState({ total: 0, nova: 0, work: 0, done: 0 });
   const chatRef = useRef(null);
   useEffect(() => {
-    const s = sessionStorage.getItem('hecht_admin');
-    if (s === 'true') setLoggedIn(true);
+    (async () => {
+      try {
+        const res = await fetch('/api/session');
+        const data = await res.json();
+        if (data.valid && data.role === 'admin') setLoggedIn(true);
+      } catch (err) {
+        console.error('Session check failed:', err);
+      } finally {
+        setSessionLoading(false);
+      }
+    })();
   }, []);
   useEffect(() => {
     if (loggedIn) { loadData(); loadCenters(); }
@@ -44,11 +54,17 @@ export default function AdminPage() {
       try {
         const res = await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'verify', code: tfaCode.trim() }) });
         const data = await res.json();
-        if (data.valid) { sessionStorage.setItem('hecht_admin', 'true'); setLoggedIn(true); }
+        if (data.valid) { setLoggedIn(true); }
         else { setLoginError(data.error || 'Невірний код'); }
       } catch (err) { setLoginError('Помилка з\'єднання'); }
       finally { setTfaSending(false); }
     }
+  };
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) });
+    } catch (err) {}
+    window.location.href = '/admin';
   };
   const loadData = async () => {
     const { data } = await supabase.from('warranty_registrations').select('*, service_centers(city, center_name), comment_list:comments(id)').order('registration_date', { ascending: false });
@@ -93,6 +109,13 @@ export default function AdminPage() {
   };
   const formatDate = (d) => { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); };
   const formatChatTime = (d) => { const dt = new Date(d); return dt.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) + ' ' + dt.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }); };
+  if (sessionLoading) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: 'var(--text3)', fontSize: 14 }}>Завантаження...</div>
+      </div>
+    );
+  }
   if (!loggedIn) {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -128,7 +151,7 @@ export default function AdminPage() {
         <>
           <a href="/admin/service-centers" style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 500, color: 'var(--text2)', textDecoration: 'none', fontFamily: "'Inter', sans-serif" }}>Сервісні центри</a>
           <button onClick={exportExcel} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 500, color: 'var(--text2)', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>📊 Excel</button>
-          <button onClick={() => { sessionStorage.removeItem('hecht_admin'); setLoggedIn(false); setTfaStep('password'); setPassword(''); setTfaCode(''); }} style={{ padding: '8px 16px', borderRadius: 10, background: 'var(--red)', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>Вийти</button>
+          <button onClick={handleLogout} style={{ padding: '8px 16px', borderRadius: 10, background: 'var(--red)', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>Вийти</button>
         </>
       } />
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '28px 24px' }}>
