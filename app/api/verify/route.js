@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import bcrypt from 'bcryptjs';
-import { signSession, buildSessionCookie, buildClearSessionCookie } from '../../../lib/auth';
+import { signSession, buildSessionCookie, buildClearSessionCookie, getSession } from '../../../lib/auth';
+import { logAction, AUDIT_ACTIONS } from '../../../lib/audit';
 
 // In-memory store for codes (resets on deploy, which is fine for admin 2FA)
 const codes = new Map();
@@ -69,6 +70,16 @@ export async function POST(request) {
 
       const isValid = await bcrypt.compare(password, hash);
       if (!isValid) {
+        // ─── Audit: login_fail ──────────────────────────────────
+        await logAction({
+          userName: safeUserName,
+          actionType: AUDIT_ACTIONS.AUTH_LOGIN_FAIL,
+          warrantyId: null,
+          oldValue: null,
+          newValue: { user_name: safeUserName, reason: 'wrong_password' },
+          request,
+        });
+
         return Response.json({ success: false, error: 'Невірний пароль' });
       }
 
@@ -76,6 +87,16 @@ export async function POST(request) {
       // Зберігаємо вибраного user_name разом з кодом — використається у verify
       const stored = codes.get('admin') || {};
       codes.set('admin', { ...stored, user_name: safeUserName });
+
+      // ─── Audit: login_success (пароль правильний, 2FA код пішов) ──
+      await logAction({
+        userName: safeUserName,
+        actionType: AUDIT_ACTIONS.AUTH_LOGIN_SUCCESS,
+        warrantyId: null,
+        oldValue: null,
+        newValue: { user_name: safeUserName },
+        request,
+      });
 
       return Response.json({ success: true });
     }
@@ -85,11 +106,31 @@ export async function POST(request) {
       const stored = codes.get('admin');
 
       if (!stored) {
+        // ─── Audit: 2fa_fail (код не знайдено) ───────────────────
+        await logAction({
+          userName: 'unknown',
+          actionType: AUDIT_ACTIONS.AUTH_2FA_FAIL,
+          warrantyId: null,
+          oldValue: null,
+          newValue: { reason: 'no_active_code' },
+          request,
+        });
         return Response.json({ valid: false, error: 'Код не знайдено. Спробуйте отримати новий.' });
       }
 
       if (stored.expires < Date.now()) {
+        const expiredUserName = stored.user_name || 'unknown';
         codes.delete('admin');
+
+        // ─── Audit: 2fa_fail (протерміновано) ────────────────────
+        await logAction({
+          userName: expiredUserName,
+          actionType: AUDIT_ACTIONS.AUTH_2FA_FAIL,
+          warrantyId: null,
+          oldValue: null,
+          newValue: { reason: 'expired' },
+          request,
+        });
         return Response.json({ valid: false, error: 'Код протермінований. Отримайте новий.' });
       }
 
@@ -106,6 +147,17 @@ export async function POST(request) {
           name: 'Hecht',
           user_name: userName,
         });
+
+        // ─── Audit: 2fa_success ──────────────────────────────────
+        await logAction({
+          userName,
+          actionType: AUDIT_ACTIONS.AUTH_2FA_SUCCESS,
+          warrantyId: null,
+          oldValue: null,
+          newValue: { user_name: userName },
+          request,
+        });
+
         return new Response(
           JSON.stringify({ valid: true }),
           {
@@ -118,11 +170,35 @@ export async function POST(request) {
         );
       }
 
+      // ─── Audit: 2fa_fail (невірний код) ──────────────────────
+      await logAction({
+        userName: stored.user_name || 'unknown',
+        actionType: AUDIT_ACTIONS.AUTH_2FA_FAIL,
+        warrantyId: null,
+        oldValue: null,
+        newValue: { reason: 'wrong_code' },
+        request,
+      });
+
       return Response.json({ valid: false, error: 'Невірний код' });
     }
 
     // logout — очищуємо cookie
     if (action === 'logout') {
+      // Беремо user_name з поточної session (якщо ще є)
+      const session = await getSession(request);
+      const userName = session?.user_name || 'unknown';
+
+      // ─── Audit: logout ───────────────────────────────────────
+      await logAction({
+        userName,
+        actionType: AUDIT_ACTIONS.AUTH_LOGOUT,
+        warrantyId: null,
+        oldValue: null,
+        newValue: { user_name: userName },
+        request,
+      });
+
       return new Response(
         JSON.stringify({ success: true }),
         {
