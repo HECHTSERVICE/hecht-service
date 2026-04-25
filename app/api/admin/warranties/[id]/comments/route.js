@@ -1,8 +1,7 @@
 import { getSession } from '../../../../../../lib/auth';
 import { listComments, createComment } from '../../../../../../lib/admin/comments';
-
+import { logAction, AUDIT_ACTIONS } from '../../../../../../lib/audit';
 export const runtime = 'nodejs';
-
 /**
  * GET /api/admin/warranties/[id]/comments
  *
@@ -16,12 +15,10 @@ export async function GET(request, { params }) {
   if (!session || session.role !== 'admin') {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
   const { id } = await params;
   if (!id) {
     return Response.json({ error: 'Missing warranty id' }, { status: 400 });
   }
-
   try {
     const comments = await listComments(id);
     return Response.json({ comments });
@@ -33,7 +30,6 @@ export async function GET(request, { params }) {
     );
   }
 }
-
 /**
  * POST /api/admin/warranties/[id]/comments
  *
@@ -42,6 +38,9 @@ export async function GET(request, { params }) {
  *
  * ВАЖЛИВО: author_name береться з JWT session (session.name),
  * а author_role жорстко 'admin' у helper-і. Клієнт не може підробити.
+ *
+ * Tier 1.4 (Audit): після успішного INSERT логує дію у action_log
+ * з action_type='warranty.comment_add' та message у new_value.
  *
  * Body: { message: string }
  * Response 200: { comment: {...} } — створений коментар з id та created_at
@@ -52,39 +51,45 @@ export async function POST(request, { params }) {
   if (!session || session.role !== 'admin') {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
   const { id } = await params;
   if (!id) {
     return Response.json({ error: 'Missing warranty id' }, { status: 400 });
   }
-
   let body;
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
-
   const message = body?.message;
   if (!message || typeof message !== 'string' || !message.trim()) {
     return Response.json({ error: 'Повідомлення не може бути порожнім' }, { status: 400 });
   }
-
   try {
     const comment = await createComment(id, {
       message,
       authorName: session.name || 'Hecht', // імʼя з JWT, fallback на 'Hecht'
     });
 
+    // ─── Tier 1.4: audit logging ──────────────────────────────────
+    // Fire-and-forget. message серіалізується як JSON у audit.js.
+    // Зберігаємо повний message щоб потім бачити що саме було написано.
+    await logAction({
+      userName: session.user_name || 'unknown',
+      actionType: AUDIT_ACTIONS.WARRANTY_COMMENT_ADD,
+      warrantyId: id,
+      oldValue: null,
+      newValue: { message: comment.message, comment_id: comment.id },
+      request,
+    });
+
     return Response.json({ comment });
   } catch (err) {
     console.error('[api/admin/warranties/[id]/comments POST] error:', err);
-
     const msg = err?.message || '';
     if (msg.includes('too long') || msg.includes('is empty')) {
       return Response.json({ error: msg }, { status: 400 });
     }
-
     return Response.json(
       { error: 'Помилка створення коментаря' },
       { status: 500 }
