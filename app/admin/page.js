@@ -7,8 +7,10 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [userName, setUserName] = useState('ihor'); // ⭐ Tier 1.4 — для audit log
   const [loginError, setLoginError] = useState('');
-  const [tfaStep, setTfaStep] = useState('password');
+  const [tfaStep, setTfaStep] = useState('password'); // 'password' | 'method' | 'code' | 'recovery'
+  const [tfaMethod, setTfaMethod] = useState('totp'); // 'totp' | 'email' | 'recovery' — Tier 2.1
   const [tfaCode, setTfaCode] = useState('');
+  const [recoveryKey, setRecoveryKey] = useState(''); // Tier 2.1 emergency
   const [tfaSending, setTfaSending] = useState(false);
   const [registrations, setRegistrations] = useState([]);
   const [centers, setCenters] = useState([]);
@@ -35,36 +37,145 @@ export default function AdminPage() {
   useEffect(() => {
     if (loggedIn) { loadData(); loadCenters(); }
   }, [loggedIn]);
+
+  // ═══════════════════════════════════════════════════════════════
+  // Login flow — Tier 2.1: TOTP як default + Email fallback + Recovery
+  // ═══════════════════════════════════════════════════════════════
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
+
+    // STEP 1: пароль → перейти у вибір методу
     if (tfaStep === 'password') {
       if (!password) { setLoginError('Введіть пароль'); return; }
+      // Просто переходимо у method selection — пароль ще не валідуємо
+      // Валідація буде разом з вибраним методом (login або login-totp)
+      setTfaStep('method');
+      return;
+    }
+
+    // STEP 2: метод вибрано → відправляємо пароль на правильний endpoint
+    if (tfaStep === 'method') {
       setTfaSending(true);
       try {
-        const res = await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', password, user_name: userName }) });
-        const data = await res.json();
-        if (data.success) { setTfaStep('code'); setPassword(''); }
-        else { setLoginError(data.error || 'Невірний пароль'); }
-      } catch (err) { setLoginError('Помилка з\'єднання'); }
-      finally { setTfaSending(false); }
-    } else if (tfaStep === 'code') {
+        // TOTP path — login-totp (НЕ шле email)
+        if (tfaMethod === 'totp') {
+          const res = await fetch('/api/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'login-totp', password, user_name: userName })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setTfaStep('code');
+            setPassword('');
+          } else {
+            setLoginError(data.error || 'Невірний пароль');
+          }
+        }
+        // Email path — старий flow (надсилає код на пошту)
+        else if (tfaMethod === 'email') {
+          const res = await fetch('/api/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'login', password, user_name: userName })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setTfaStep('code');
+            setPassword('');
+          } else {
+            setLoginError(data.error || 'Невірний пароль');
+          }
+        }
+        // Recovery path — використовує login-totp + потім recovery_key
+        else if (tfaMethod === 'recovery') {
+          const res = await fetch('/api/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'login-totp', password, user_name: userName })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setTfaStep('recovery');
+            setPassword('');
+          } else {
+            setLoginError(data.error || 'Невірний пароль');
+          }
+        }
+      } catch (err) {
+        setLoginError('Помилка з\'єднання');
+      } finally {
+        setTfaSending(false);
+      }
+      return;
+    }
+
+    // STEP 3a: ввід TOTP/Email коду
+    if (tfaStep === 'code') {
       if (!tfaCode.trim()) { setLoginError('Введіть код'); return; }
       setTfaSending(true);
       try {
-        const res = await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'verify', code: tfaCode.trim() }) });
-        const data = await res.json();
-        if (data.valid) { setLoggedIn(true); }
-        else { setLoginError(data.error || 'Невірний код'); }
+        // TOTP code → verify-totp
+        if (tfaMethod === 'totp') {
+          const res = await fetch('/api/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'verify-totp', token: tfaCode.trim() })
+          });
+          const data = await res.json();
+          if (data.valid) { setLoggedIn(true); }
+          else { setLoginError(data.error || 'Невірний код'); }
+        }
+        // Email code → verify (старий flow)
+        else {
+          const res = await fetch('/api/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'verify', code: tfaCode.trim() })
+          });
+          const data = await res.json();
+          if (data.valid) { setLoggedIn(true); }
+          else { setLoginError(data.error || 'Невірний код'); }
+        }
       } catch (err) { setLoginError('Помилка з\'єднання'); }
       finally { setTfaSending(false); }
+      return;
+    }
+
+    // STEP 3b: ввід recovery key
+    if (tfaStep === 'recovery') {
+      if (!recoveryKey.trim()) { setLoginError('Введіть recovery key'); return; }
+      setTfaSending(true);
+      try {
+        const res = await fetch('/api/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'verify-recovery', recovery_key: recoveryKey.trim() })
+        });
+        const data = await res.json();
+        if (data.valid) { setLoggedIn(true); }
+        else { setLoginError(data.error || 'Невірний recovery key'); }
+      } catch (err) { setLoginError('Помилка з\'єднання'); }
+      finally { setTfaSending(false); }
+      return;
     }
   };
+
   const handleLogout = async () => {
     try {
       await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) });
     } catch (err) {}
     window.location.href = '/admin';
+  };
+
+  // Reset до початку login flow (повертатись назад)
+  const resetLoginFlow = () => {
+    setTfaStep('password');
+    setTfaCode('');
+    setRecoveryKey('');
+    setLoginError('');
+    setTfaMethod('totp');
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -202,18 +313,26 @@ export default function AdminPage() {
     );
   }
   if (!loggedIn) {
+    // Subtitles для кожного step (Tier 2.1)
+    const stepSubtitle = {
+      password: 'Введіть пароль для входу',
+      method: 'Як отримати код підтвердження?',
+      code: tfaMethod === 'totp' ? '📱 Введіть код з Google Authenticator' : '📧 Код надіслано на пошту адміністратора',
+      recovery: '🔑 Recovery key (32 символи з Apple Notes)',
+    };
+
     return (
       <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <form onSubmit={handleLogin} style={{ maxWidth: 420, width: '100%', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 24, padding: '48px 36px', textAlign: 'center', boxShadow: 'var(--shadow)', animation: 'fadeUp 0.5s ease both' }}>
           <div style={{ width: 48, height: 48, background: 'var(--red)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', fontFamily: "'Space Mono', monospace", color: '#fff', fontWeight: 700, fontSize: 22 }}>H</div>
           <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Адмін-панель</h1>
-          <p style={{ fontSize: 14, color: 'var(--text3)', marginBottom: 28 }}>
-            {tfaStep === 'password' ? 'Введіть пароль для входу' : '🔐 Код надіслано на пошту адміністратора'}
-          </p>
+          <p style={{ fontSize: 14, color: 'var(--text3)', marginBottom: 28 }}>{stepSubtitle[tfaStep]}</p>
           {loginError && (
             <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: 'var(--red)' }}>{loginError}</div>
           )}
-          {tfaStep === 'password' ? (
+
+          {/* STEP 1: Toggle + Password */}
+          {tfaStep === 'password' && (
             <>
               <div style={{ marginBottom: 16, textAlign: 'left' }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Хто заходить?</div>
@@ -235,15 +354,77 @@ export default function AdminPage() {
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Пароль" autoFocus
                 style={{ width: '100%', padding: '14px 16px', fontSize: 16, background: 'var(--input)', border: '1px solid var(--border)', borderRadius: 14, color: 'var(--text)', outline: 'none', marginBottom: 16, boxSizing: 'border-box', fontFamily: "'Inter', sans-serif" }} />
             </>
-          ) : (
-            <input type="text" value={tfaCode} onChange={e => setTfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="______" autoFocus maxLength={6}
+          )}
+
+          {/* STEP 2: Method selection (Tier 2.1) */}
+          {tfaStep === 'method' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+              {[
+                { value: 'totp', icon: '📱', title: 'Authenticator', subtitle: 'Швидко — код з телефону' },
+                { value: 'email', icon: '📧', title: 'Email', subtitle: 'Код на пошту (повільніше)' },
+                { value: 'recovery', icon: '🔑', title: 'Recovery key', subtitle: 'Загубив телефон' },
+              ].map(opt => {
+                const active = tfaMethod === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setTfaMethod(opt.value)}
+                    style={{
+                      padding: '14px 18px',
+                      fontSize: 14,
+                      fontFamily: "'Inter', sans-serif",
+                      borderRadius: 12,
+                      border: active ? '2px solid var(--red)' : '1px solid var(--border)',
+                      background: active ? 'var(--red-bg)' : 'var(--input)',
+                      color: 'var(--text)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 14,
+                    }}
+                  >
+                    <div style={{ fontSize: 22 }}>{opt.icon}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 2 }}>{opt.title}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text3)' }}>{opt.subtitle}</div>
+                    </div>
+                    {active && <div style={{ color: 'var(--red)', fontSize: 16, fontWeight: 700 }}>✓</div>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* STEP 3a: TOTP/Email code input */}
+          {tfaStep === 'code' && (
+            <input type="text" value={tfaCode} onChange={e => setTfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="______" autoFocus maxLength={6} inputMode="numeric"
               style={{ width: '100%', padding: '14px 16px', fontSize: 28, background: 'var(--input)', border: '1px solid var(--border)', borderRadius: 14, color: 'var(--text)', outline: 'none', marginBottom: 16, boxSizing: 'border-box', fontFamily: "'Space Mono', monospace", textAlign: 'center', letterSpacing: '0.5em' }} />
           )}
+
+          {/* STEP 3b: Recovery key input */}
+          {tfaStep === 'recovery' && (
+            <>
+              <input type="text" value={recoveryKey} onChange={e => setRecoveryKey(e.target.value.trim())} placeholder="Recovery key з Apple Notes..." autoFocus
+                style={{ width: '100%', padding: '14px 16px', fontSize: 13, background: 'var(--input)', border: '1px solid var(--border)', borderRadius: 14, color: 'var(--text)', outline: 'none', marginBottom: 12, boxSizing: 'border-box', fontFamily: "'Space Mono', monospace" }} />
+              <div style={{ background: 'var(--yellow-bg)', border: '1px solid var(--yellow-border)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#92400e', textAlign: 'left' }}>
+                ⚠️ Після використання recovery key — обов&apos;язково згенерувати новий і оновити Vercel + Apple Notes.
+              </div>
+            </>
+          )}
+
           <button type="submit" disabled={tfaSending} style={{ width: '100%', padding: 14, background: tfaSending ? 'var(--text3)' : 'var(--red)', color: '#fff', border: 'none', borderRadius: 14, fontSize: 16, fontWeight: 600, cursor: tfaSending ? 'wait' : 'pointer', fontFamily: "'Inter', sans-serif", opacity: tfaSending ? 0.7 : 1 }}>
-            {tfaSending ? 'Зачекайте...' : tfaStep === 'password' ? 'Далі' : 'Увійти'}
+            {tfaSending ? 'Зачекайте...' :
+             tfaStep === 'password' ? 'Далі' :
+             tfaStep === 'method' ? 'Продовжити' :
+             'Увійти'}
           </button>
-          {tfaStep === 'code' && (
-            <button type="button" onClick={() => { setTfaStep('password'); setTfaCode(''); setLoginError(''); }} style={{ marginTop: 12, background: 'none', border: 'none', color: 'var(--text3)', fontSize: 13, cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>← Назад до паролю</button>
+
+          {/* Back button — для всіх step крім password */}
+          {tfaStep !== 'password' && (
+            <button type="button" onClick={resetLoginFlow} style={{ marginTop: 12, background: 'none', border: 'none', color: 'var(--text3)', fontSize: 13, cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>← Почати спочатку</button>
           )}
         </form>
       </div>
