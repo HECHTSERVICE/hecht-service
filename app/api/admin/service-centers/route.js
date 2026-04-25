@@ -4,6 +4,12 @@
  * Server-side DB operations через createAdminClient() (Service Role Key).
  * Auth guard: HttpOnly cookie JWT → getSession() → role='admin'.
  *
+ * Tier 1.4 (Audit): кожна mutation логує дію у action_log.
+ *   - create-center → sc.create
+ *   - delete-center → sc.delete
+ *   - add-user      → sc.user_create
+ *   - delete-user   → sc.user_delete
+ *
  * Actions:
  *   GET                                → список СЦ з nested users
  *   POST { action: 'create-center' }   → створити СЦ
@@ -18,18 +24,19 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getSession } from '../../../../lib/auth';
 import { createAdminClient } from '../../../../lib/supabase';
+import { logAction, AUDIT_ACTIONS } from '../../../../lib/audit';
 
 async function requireAdmin(request) {
   const session = await getSession(request);
   if (!session || session.role !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return { unauthorized: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }
-  return null;
+  return { session };
 }
 
 // ─── GET: список СЦ з користувачами ────────────────────────────
 export async function GET(request) {
-  const unauthorized = await requireAdmin(request);
+  const { unauthorized } = await requireAdmin(request);
   if (unauthorized) return unauthorized;
 
   const db = createAdminClient();
@@ -46,8 +53,10 @@ export async function GET(request) {
 
 // ─── POST: dispatch по action ──────────────────────────────────
 export async function POST(request) {
-  const unauthorized = await requireAdmin(request);
+  const { unauthorized, session } = await requireAdmin(request);
   if (unauthorized) return unauthorized;
+
+  const userName = session.user_name || 'unknown';
 
   let body;
   try {
@@ -74,13 +83,18 @@ export async function POST(request) {
       );
     }
 
-    const { error } = await db.from('service_centers').insert({
-      city,
-      center_name,
-      contact_person: contact_person || null,
-      phone: phone || null,
-      email: email || null,
-    });
+    // .select().single() — щоб отримати id новоствореного СЦ для audit
+    const { data: created, error } = await db
+      .from('service_centers')
+      .insert({
+        city,
+        center_name,
+        contact_person: contact_person || null,
+        phone: phone || null,
+        email: email || null,
+      })
+      .select()
+      .single();
 
     if (error) {
       return NextResponse.json(
@@ -88,6 +102,21 @@ export async function POST(request) {
         { status: 500 }
       );
     }
+
+    // ─── Audit ─────────────────────────────────────────────────
+    await logAction({
+      userName,
+      actionType: AUDIT_ACTIONS.SC_CREATE,
+      warrantyId: null,
+      oldValue: null,
+      newValue: {
+        id: created.id,
+        city: created.city,
+        center_name: created.center_name,
+      },
+      request,
+    });
+
     return NextResponse.json({ success: true });
   }
 
@@ -97,6 +126,13 @@ export async function POST(request) {
     if (!id) {
       return NextResponse.json({ error: 'Не вказано id' }, { status: 400 });
     }
+
+    // SELECT перед DELETE — щоб логувати що саме видалили
+    const { data: existing } = await db
+      .from('service_centers')
+      .select('id, city, center_name')
+      .eq('id', id)
+      .single();
 
     // Каскадне видалення users (може бути 0 — це норма)
     await db.from('users').delete().eq('service_center_id', id);
@@ -109,6 +145,19 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    // ─── Audit ─────────────────────────────────────────────────
+    await logAction({
+      userName,
+      actionType: AUDIT_ACTIONS.SC_DELETE,
+      warrantyId: null,
+      oldValue: existing
+        ? { id: existing.id, city: existing.city, center_name: existing.center_name }
+        : { id },
+      newValue: null,
+      request,
+    });
+
     return NextResponse.json({ success: true });
   }
 
@@ -135,14 +184,18 @@ export async function POST(request) {
     // 🔐 Bcrypt на сервері (раніше зберігалось plain text!)
     const password_hash = await bcrypt.hash(password, 10);
 
-    const { error } = await db.from('users').insert({
-      username,
-      password_hash,
-      role: 'service_center',
-      service_center_id,
-      full_name: full_name || null,
-      active: true,
-    });
+    const { data: created, error } = await db
+      .from('users')
+      .insert({
+        username,
+        password_hash,
+        role: 'service_center',
+        service_center_id,
+        full_name: full_name || null,
+        active: true,
+      })
+      .select('id, username, service_center_id, full_name')
+      .single();
 
     if (error) {
       const isUnique = (error.message || '').toLowerCase().includes('unique');
@@ -151,6 +204,22 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    // ─── Audit ─────────────────────────────────────────────────
+    // ⚠️ password_hash НЕ логуємо — security
+    await logAction({
+      userName,
+      actionType: AUDIT_ACTIONS.SC_USER_CREATE,
+      warrantyId: null,
+      oldValue: null,
+      newValue: {
+        id: created.id,
+        username: created.username,
+        service_center_id: created.service_center_id,
+      },
+      request,
+    });
+
     return NextResponse.json({ success: true });
   }
 
@@ -161,6 +230,13 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Не вказано user_id' }, { status: 400 });
     }
 
+    // SELECT перед DELETE — щоб логувати кого видалили (без hash!)
+    const { data: existing } = await db
+      .from('users')
+      .select('id, username, service_center_id')
+      .eq('id', user_id)
+      .single();
+
     const { error } = await db.from('users').delete().eq('id', user_id);
     if (error) {
       return NextResponse.json(
@@ -168,6 +244,19 @@ export async function POST(request) {
         { status: 500 }
       );
     }
+
+    // ─── Audit ─────────────────────────────────────────────────
+    await logAction({
+      userName,
+      actionType: AUDIT_ACTIONS.SC_USER_DELETE,
+      warrantyId: null,
+      oldValue: existing
+        ? { id: existing.id, username: existing.username, service_center_id: existing.service_center_id }
+        : { id: user_id },
+      newValue: null,
+      request,
+    });
+
     return NextResponse.json({ success: true });
   }
 
