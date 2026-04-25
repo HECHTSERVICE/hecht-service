@@ -5,11 +5,16 @@ import { signSession, buildSessionCookie, buildClearSessionCookie } from '../../
 // In-memory store for codes (resets on deploy, which is fine for admin 2FA)
 const codes = new Map();
 
+// Whitelist для user_name — захист від injection у JWT
+const ALLOWED_USER_NAMES = ['ihor', 'director'];
+
 async function sendTfaCode() {
   const code = String(Math.floor(100000 + Math.random() * 900000));
   const expires = Date.now() + 5 * 60 * 1000;
 
-  codes.set('admin', { code, expires });
+  // Зберігаємо тільки code+expires, user_name прийде окремо у login action
+  const existing = codes.get('admin') || {};
+  codes.set('admin', { ...existing, code, expires });
 
   for (const [key, val] of codes) {
     if (val.expires < Date.now()) codes.delete(key);
@@ -45,13 +50,16 @@ async function sendTfaCode() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { action, code: userCode, password } = body;
+    const { action, code: userCode, password, user_name } = body;
 
     // login — перевіряємо пароль через bcrypt, відправляємо 2FA
     if (action === 'login') {
       if (!password) {
         return Response.json({ success: false, error: 'Пароль не вказано' }, { status: 400 });
       }
+
+      // Whitelist user_name — fallback 'ihor' якщо не надіслано (backward compat)
+      const safeUserName = ALLOWED_USER_NAMES.includes(user_name) ? user_name : 'ihor';
 
       const hash = process.env.ADMIN_PASSWORD_HASH;
       if (!hash) {
@@ -65,6 +73,10 @@ export async function POST(request) {
       }
 
       await sendTfaCode();
+      // Зберігаємо вибраного user_name разом з кодом — використається у verify
+      const stored = codes.get('admin') || {};
+      codes.set('admin', { ...stored, user_name: safeUserName });
+
       return Response.json({ success: true });
     }
 
@@ -82,10 +94,18 @@ export async function POST(request) {
       }
 
       if (stored.code === userCode) {
+        const userName = stored.user_name || 'ihor';
         codes.delete('admin');
 
         // Видача HTTP-only cookie з JWT
-        const token = await signSession({ role: 'admin', name: 'Hecht' });
+        // role='admin' для guards
+        // name='Hecht' — public alias для коментарів (бренд-голос)
+        // user_name='ihor'|'director' — приватний identifier для audit log
+        const token = await signSession({
+          role: 'admin',
+          name: 'Hecht',
+          user_name: userName,
+        });
         return new Response(
           JSON.stringify({ valid: true }),
           {
