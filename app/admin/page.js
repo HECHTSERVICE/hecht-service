@@ -5,6 +5,7 @@ export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [password, setPassword] = useState('');
+  const [userName, setUserName] = useState('ihor'); // ⭐ Tier 1.4 — для audit log
   const [loginError, setLoginError] = useState('');
   const [tfaStep, setTfaStep] = useState('password');
   const [tfaCode, setTfaCode] = useState('');
@@ -41,7 +42,7 @@ export default function AdminPage() {
       if (!password) { setLoginError('Введіть пароль'); return; }
       setTfaSending(true);
       try {
-        const res = await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', password }) });
+        const res = await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', password, user_name: userName }) });
         const data = await res.json();
         if (data.success) { setTfaStep('code'); setPassword(''); }
         else { setLoginError(data.error || 'Невірний пароль'); }
@@ -213,8 +214,27 @@ export default function AdminPage() {
             <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: 'var(--red)' }}>{loginError}</div>
           )}
           {tfaStep === 'password' ? (
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Пароль" autoFocus
-              style={{ width: '100%', padding: '14px 16px', fontSize: 16, background: 'var(--input)', border: '1px solid var(--border)', borderRadius: 14, color: 'var(--text)', outline: 'none', marginBottom: 16, boxSizing: 'border-box', fontFamily: "'Inter', sans-serif" }} />
+            <>
+              <div style={{ marginBottom: 16, textAlign: 'left' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Хто заходить?</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[
+                    { value: 'ihor', label: 'Ігор' },
+                    { value: 'director', label: 'Директор' },
+                  ].map(opt => {
+                    const active = userName === opt.value;
+                    return (
+                      <button key={opt.value} type="button" onClick={() => setUserName(opt.value)}
+                        style={{ flex: 1, padding: '12px 16px', fontSize: 14, fontWeight: 600, fontFamily: "'Inter', sans-serif", borderRadius: 12, border: active ? '1px solid var(--red)' : '1px solid var(--border)', background: active ? 'var(--red)' : 'var(--input)', color: active ? '#fff' : 'var(--text2)', cursor: 'pointer', transition: 'all 0.15s' }}>
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Пароль" autoFocus
+                style={{ width: '100%', padding: '14px 16px', fontSize: 16, background: 'var(--input)', border: '1px solid var(--border)', borderRadius: 14, color: 'var(--text)', outline: 'none', marginBottom: 16, boxSizing: 'border-box', fontFamily: "'Inter', sans-serif" }} />
+            </>
           ) : (
             <input type="text" value={tfaCode} onChange={e => setTfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="______" autoFocus maxLength={6}
               style={{ width: '100%', padding: '14px 16px', fontSize: 28, background: 'var(--input)', border: '1px solid var(--border)', borderRadius: 14, color: 'var(--text)', outline: 'none', marginBottom: 16, boxSizing: 'border-box', fontFamily: "'Space Mono', monospace", textAlign: 'center', letterSpacing: '0.5em' }} />
