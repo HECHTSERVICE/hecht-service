@@ -13,7 +13,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { runBackup } from '@/lib/backup';
+import { runBackup } from '../../../../lib/backup';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
