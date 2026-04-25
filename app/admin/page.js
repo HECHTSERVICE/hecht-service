@@ -254,6 +254,7 @@ export default function AdminPage() {
       <Navbar title="Hecht Admin" showShop={false} rightContent={
         <>
           <a href="/admin/service-centers" style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 500, color: 'var(--text2)', textDecoration: 'none', fontFamily: "'Inter', sans-serif" }}>Сервісні центри</a>
+    <a href="/admin/audit" style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 500, color: 'var(--text2)', textDecoration: 'none', fontFamily: "'Inter', sans-serif" }}>📊 Audit</a>
           <button onClick={exportExcel} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 500, color: 'var(--text2)', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>📊 Excel</button>
           <button onClick={handleLogout} style={{ padding: '8px 16px', borderRadius: 10, background: 'var(--red)', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>Вийти</button>
         </>
