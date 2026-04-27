@@ -2,8 +2,13 @@
  * Hecht Service — Next.js Edge Middleware
  *
  * 1. Rate limiting через Upstash Redis (lazy init, graceful degrade)
- * 2. Admin route protection — /admin/* (крім root /admin login page)
- *    вимагає валідний HTTP-only cookie
+ * 2. Admin route protection — /admin/* (крім root /admin login page
+ *    та /admin/service-panel — це SC portal з власним auth flow)
+ *    вимагає валідний HTTP-only cookie hecht_admin_session
+ *
+ * SC portal (/admin/service-panel) керує власним auth client-side
+ * через GET /api/sc/session probe — middleware його НЕ блокує.
+ * API endpoints /api/sc/* мають свій auth guard через getSCSession().
  *
  * Принцип: краще живий сайт без rate limit, ніж мертвий сайт з rate limit.
  */
@@ -101,7 +106,16 @@ function pickLimiter(limiters, pathname) {
 function needsAdminAuth(pathname) {
   // /admin — це login page, не захищаємо
   if (pathname === '/admin' || pathname === '/admin/') return false;
-  // /admin/* — захищаємо
+  // /admin/service-panel — це SC portal з власним auth flow,
+  // НЕ потребує admin сесії (має свою через hecht_sc_session)
+  if (
+    pathname === '/admin/service-panel' ||
+    pathname === '/admin/service-panel/' ||
+    pathname.startsWith('/admin/service-panel/')
+  ) {
+    return false;
+  }
+  // /admin/* — захищаємо admin сесією
   return pathname.startsWith('/admin/');
 }
 
@@ -162,6 +176,5 @@ export const config = {
   matcher: [
     '/api/:path*',
     '/admin/:path*',
-    '/service-panel/:path*',
   ],
 };
