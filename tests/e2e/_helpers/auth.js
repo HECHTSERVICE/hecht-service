@@ -1,15 +1,16 @@
 /**
  * Auth helpers для E2E тестів.
  *
- * loginAsAdmin() — логіниться як Ігор через TOTP path:
- *   1) toggle Ігор/Директор → Ігор
- *   2) password
- *   3) method: TOTP
- *   4) generated 6-digit code
- *   → /admin
+ * loginAsAdmin() — логіниться як Ігор через TOTP path.
+ *
+ * UI flow (з app/admin/page.js):
+ *   STEP 1 (password): toggle Ігор/Директор → password input → "Далі"
+ *   STEP 2 (method):    обрати Authenticator/Email/Recovery → "Продовжити"
+ *   STEP 3 (code):      6-цифровий код → "Увійти"
+ *   → /admin dashboard (loggedIn=true, але URL не змінюється)
  *
  * Залежить від GitHub Secrets:
- *   ADMIN_PASSWORD — plain password Ігоря (той що bcrypt-нутий у ADMIN_PASSWORD_HASH)
+ *   ADMIN_PASSWORD — plain пароль Ігоря
  *   TOTP_SECRET_IHOR — base32 secret (той самий що у Vercel)
  */
 
@@ -20,7 +21,6 @@ authenticator.options = { window: 1, step: 30 };
 
 /**
  * Генерує валідний 6-цифровий TOTP код на основі secret.
- * Той самий algorithm що у lib/totp.js → server прийме код як валідний.
  */
 export function generateTotpCode(secret) {
   if (!secret) throw new Error('TOTP_SECRET_IHOR not set in env');
@@ -29,15 +29,6 @@ export function generateTotpCode(secret) {
 
 /**
  * Логіниться у адмінку як Ігор через TOTP path.
- *
- * Кроки:
- *   1) goto /admin
- *   2) обрати toggle "Ігор"
- *   3) ввести password
- *   4) Continue
- *   5) обрати method "Authenticator"
- *   6) ввести 6-цифровий TOTP код
- *   7) перевірити що ми у /admin (signed in)
  *
  * @param {import('@playwright/test').Page} page
  */
@@ -50,45 +41,50 @@ export async function loginAsAdmin(page) {
 
   await page.goto('/admin');
 
-  // Step 1: toggle "Ігор" (default selected, але клік для впевненості)
-  const ihorToggle = page.getByRole('button', { name: /Ігор/i }).first();
-  if (await ihorToggle.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await ihorToggle.click();
-  }
+  // Wait for login form to render (sessionLoading → false)
+  await expect(page.locator('input[type="password"]')).toBeVisible({ timeout: 10000 });
 
-  // Step 2: password input
-  const passwordInput = page.getByLabel(/пароль/i).or(page.locator('input[type="password"]')).first();
-  await passwordInput.fill(password);
+  // STEP 1: toggle Ігор (default selected, але клікаємо для впевненості)
+  await page.getByRole('button', { name: 'Ігор', exact: true }).click();
 
-  // Step 3: Continue / submit password
-  await page.getByRole('button', { name: /(Увійти|Далі|Продовжити|Continue)/i }).first().click();
+  // STEP 1: password input
+  await page.locator('input[type="password"]').fill(password);
 
-  // Step 4: method selector → TOTP / Authenticator
-  await page.getByRole('button', { name: /(Authenticator|TOTP|Аутентифікатор)/i }).first().click();
+  // STEP 1 → STEP 2: button "Далі"
+  await page.getByRole('button', { name: 'Далі', exact: true }).click();
 
-  // Step 5: TOTP code input
+  // STEP 2: method buttons видимі — Authenticator (default selected)
+  await expect(page.getByRole('button', { name: /Authenticator/i })).toBeVisible({ timeout: 10000 });
+  await page.getByRole('button', { name: /Authenticator/i }).click();
+
+  // STEP 2 → STEP 3: button "Продовжити"
+  await page.getByRole('button', { name: 'Продовжити', exact: true }).click();
+
+  // STEP 3: numeric code input з'являється
+  const codeInput = page.locator('input[inputmode="numeric"]');
+  await expect(codeInput).toBeVisible({ timeout: 10000 });
+
+  // Generate fresh TOTP code
   const code = generateTotpCode(totpSecret);
-  const codeInput = page.getByLabel(/(код|code)/i).or(page.locator('input[inputmode="numeric"]')).first();
   await codeInput.fill(code);
 
-  // Step 6: submit code
-  await page.getByRole('button', { name: /(Підтвердити|Увійти|Verify|Continue)/i }).first().click();
+  // STEP 3: button "Увійти"
+  await page.getByRole('button', { name: 'Увійти', exact: true }).click();
 
-  // Step 7: assert ми у admin dashboard
-  await expect(page).toHaveURL(/\/admin($|\?|#|\/)/, { timeout: 10000 });
-  await expect(page.locator('body')).not.toContainText(/невірний|invalid|помилка/i);
+  // Verify success: login form зникає, з'являється Navbar з "Hecht Admin"
+  // (URL не змінюється — це SPA, тільки state loggedIn)
+  await expect(page.locator('input[type="password"]')).toBeHidden({ timeout: 10000 });
+  await expect(page.getByText(/Всього заявок/i).first()).toBeVisible({ timeout: 10000 });
 }
 
 /**
- * Logout — очищає JWT cookie і повертається на public сайт.
+ * Logout — викликає API напряму (швидко) і очищає cookies.
  *
  * @param {import('@playwright/test').Page} page
  */
 export async function logoutAdmin(page) {
-  // Викликаємо logout endpoint напряму (швидше ніж клікати UI)
   await page.request.post('/api/verify', {
     data: { action: 'logout' },
   });
-  // Очищаємо cookies на всякий випадок
   await page.context().clearCookies();
 }
