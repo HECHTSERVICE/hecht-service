@@ -5,6 +5,8 @@
  * 2. Admin route protection — /admin/* (крім root /admin login page
  *    та /admin/service-panel — це SC portal з власним auth flow)
  *    вимагає валідний HTTP-only cookie hecht_admin_session
+ * 3. E2E bypass — header x-e2e-bypass з CI_TEST_SECRET вимикає rate limit
+ *    для GitHub Actions runs. Secret 64+ chars, тільки у CI.
  *
  * SC portal (/admin/service-panel) керує власним auth client-side
  * через GET /api/sc/session probe — middleware його НЕ блокує.
@@ -119,9 +121,18 @@ function needsAdminAuth(pathname) {
   return pathname.startsWith('/admin/');
 }
 
+// E2E bypass — secret header з GitHub Actions
+function isE2ETestRequest(request) {
+  const expectedSecret = process.env.CI_TEST_SECRET;
+  if (!expectedSecret || expectedSecret.length < 32) return false;
+  const providedSecret = request.headers.get('x-e2e-bypass');
+  return providedSecret === expectedSecret;
+}
+
 export async function middleware(request) {
   try {
     const pathname = request.nextUrl.pathname;
+    const isE2E = isE2ETestRequest(request);
 
     // ── 1. Admin route guard (до rate limit)
     if (needsAdminAuth(pathname)) {
@@ -132,7 +143,11 @@ export async function middleware(request) {
       }
     }
 
-    // ── 2. Rate limiting
+    // ── 2. Rate limiting (skip для E2E)
+    if (isE2E) {
+      return NextResponse.next();
+    }
+
     const limiters = await getLimiters();
     if (!limiters) {
       return NextResponse.next();
