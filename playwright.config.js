@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL || 'https://hecht-service.com.ua';
+const CI_TEST_SECRET = process.env.CI_TEST_SECRET || '';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -24,6 +25,10 @@ export default defineConfig({
     navigationTimeout: 20_000,
     locale: 'uk-UA',
     timezoneId: 'Europe/Kyiv',
+    // E2E bypass header для rate limiter — secret тільки у CI env
+    extraHTTPHeaders: CI_TEST_SECRET
+      ? { 'x-e2e-bypass': CI_TEST_SECRET }
+      : {},
   },
 
   projects: [
