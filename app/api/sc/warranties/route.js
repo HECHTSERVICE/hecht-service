@@ -25,12 +25,16 @@
  *   - model, serial_number, purchase_date — техніка
  *   - status — статус ремонту
  *   - registration_date — дата реєстрації (для сортування + UI)
- *   - service_center_id, created_at, updated_at, last_updated — meta
+ *   - service_center_id, last_updated — meta
  *   - comment_count — обчислюється з JOIN на comments
  *
  * Безпека:
  *   - Service Role bypass RLS, але WHERE service_center_id робить ту саму ізоляцію вручну
  *   - GET, не logAction (читання не аудитується для SC)
+ *
+ * History:
+ *   27.04.2026 — fix: видалено created_at/updated_at з select
+ *                (помилка 42703 — колонок не існує у warranty_registrations)
  */
 
 export const runtime = 'nodejs';
@@ -87,8 +91,7 @@ export async function GET(request) {
     .select(
       'id, cert_number, first_name, last_name, phone, email, ' +
         'model, serial_number, purchase_date, status, ' +
-        'registration_date, service_center_id, ' +
-        'created_at, updated_at, last_updated, ' +
+        'registration_date, service_center_id, last_updated, ' +
         'comment_list:comments(id)',
       { count: 'exact' }
     )
