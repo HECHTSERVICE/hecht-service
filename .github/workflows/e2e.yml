@@ -52,7 +52,9 @@ jobs:
 
       - name: Run Playwright tests
         env:
-          BASE_URL: https://hecht-service.com.ua
+          BASE_URL: ${{ secrets.TEST_BASE_URL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          TOTP_SECRET_IHOR: ${{ secrets.TOTP_SECRET_IHOR }}
           CI: true
         run: npx playwright test --project=${{ matrix.shardName }}
 
