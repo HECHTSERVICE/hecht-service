@@ -19,9 +19,17 @@
  * Response:
  *   { warranties: [...], total: N }
  *
+ * Кожна warranty містить:
+ *   - id, cert_number — для UI display
+ *   - first_name, last_name, phone, email — клієнт
+ *   - model, serial_number, purchase_date — техніка
+ *   - status — статус ремонту
+ *   - registration_date — дата реєстрації (для сортування + UI)
+ *   - service_center_id, created_at, updated_at, last_updated — meta
+ *   - comment_count — обчислюється з JOIN на comments
+ *
  * Безпека:
  *   - Service Role bypass RLS, але WHERE service_center_id робить ту саму ізоляцію вручну
- *   - Жодне поле з password_hash не повертається (warranties table його і так не має)
  *   - GET, не logAction (читання не аудитується для SC)
  */
 
@@ -73,11 +81,15 @@ export async function GET(request) {
   const db = createAdminClient();
 
   // Базовий запит: WHERE service_center_id = session.service_center_id
+  // JOIN на comments для comment_count (легка nested query)
   let query = db
     .from('warranty_registrations')
     .select(
-      'id, first_name, last_name, phone, email, model, serial_number, ' +
-        'purchase_date, status, service_center_id, created_at, updated_at',
+      'id, cert_number, first_name, last_name, phone, email, ' +
+        'model, serial_number, purchase_date, status, ' +
+        'registration_date, service_center_id, ' +
+        'created_at, updated_at, last_updated, ' +
+        'comment_list:comments(id)',
       { count: 'exact' }
     )
     .eq('service_center_id', session.service_center_id);
@@ -89,14 +101,13 @@ export async function GET(request) {
 
   // Опціональний search по серійнику АБО прізвищу
   if (search) {
-    // PostgREST or() syntax: умови через коми, кожна — окремий filter
     query = query.or(
       `serial_number.ilike.%${search}%,last_name.ilike.%${search}%`
     );
   }
 
-  // Сортуємо: найновіші зверху
-  query = query.order('created_at', { ascending: false });
+  // Сортуємо: найновіші зверху (registration_date — як у legacy UI)
+  query = query.order('registration_date', { ascending: false });
 
   // Pagination через range (start, end inclusive)
   query = query.range(offset, offset + limit - 1);
@@ -111,8 +122,15 @@ export async function GET(request) {
     );
   }
 
+  // Розгортаємо comment_count з JOIN — UI отримує готове число замість масиву
+  const warranties = (data || []).map((r) => ({
+    ...r,
+    comment_count: Array.isArray(r.comment_list) ? r.comment_list.length : 0,
+    comment_list: undefined, // прибираємо raw join з response
+  }));
+
   return NextResponse.json({
-    warranties: data || [],
+    warranties,
     total: count || 0,
     limit,
     offset,
