@@ -55,6 +55,7 @@ jobs:
           BASE_URL: ${{ secrets.TEST_BASE_URL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           TOTP_SECRET_IHOR: ${{ secrets.TOTP_SECRET_IHOR }}
+          CI_TEST_SECRET: ${{ secrets.CI_TEST_SECRET }}
           CI: true
         run: npx playwright test --project=${{ matrix.shardName }}
 
