@@ -364,8 +364,8 @@ export default function HomePage() {
               { key: 'phone', label: 'Телефон', ph: '+380...', type: 'tel' },
             ].map(f => (
               <div key={f.key}>
-                <label style={labelStyle}>{f.label} <span style={{ color: 'var(--red)' }}>*</span></label>
-                <input type={f.type || 'text'} required placeholder={f.ph}
+                <label htmlFor={`field-${f.key}`} style={labelStyle}>{f.label} <span style={{ color: 'var(--red)' }}>*</span></label>
+                <input id={`field-${f.key}`} name={f.key} type={f.type || 'text'} required placeholder={f.ph}
                   value={formData[f.key]}
                   onChange={e => setFormData({ ...formData, [f.key]: e.target.value })}
                   onFocus={() => setFocused(f.key)} onBlur={() => setFocused(null)}
@@ -379,24 +379,24 @@ export default function HomePage() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
             <div>
-              <label style={labelStyle}>Серійний номер (S/N) <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" required placeholder="Вказаний на шильді виробу"
+              <label htmlFor="field-serialNumber" style={labelStyle}>Серійний номер (S/N) <span style={{ color: 'var(--red)' }}>*</span></label>
+              <input id="field-serialNumber" name="serialNumber" type="text" required placeholder="Вказаний на шильді виробу"
                 value={formData.serialNumber}
                 onChange={e => setFormData({ ...formData, serialNumber: e.target.value })}
                 onFocus={() => setFocused('serialNumber')} onBlur={() => setFocused(null)}
                 style={inputStyle('serialNumber')} />
             </div>
             <div>
-              <label style={labelStyle}>Модель техніки <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" required placeholder="HECHT 587"
+              <label htmlFor="field-model" style={labelStyle}>Модель техніки <span style={{ color: 'var(--red)' }}>*</span></label>
+              <input id="field-model" name="model" type="text" required placeholder="HECHT 587"
                 value={formData.model}
                 onChange={e => setFormData({ ...formData, model: e.target.value })}
                 onFocus={() => setFocused('model')} onBlur={() => setFocused(null)}
                 style={inputStyle('model')} />
             </div>
             <div>
-              <label style={labelStyle}>Дата покупки <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="date" required
+              <label htmlFor="field-purchaseDate" style={labelStyle}>Дата покупки <span style={{ color: 'var(--red)' }}>*</span></label>
+              <input id="field-purchaseDate" name="purchaseDate" type="date" required
                 value={formData.purchaseDate}
                 onChange={e => setFormData({ ...formData, purchaseDate: e.target.value })}
                 onFocus={() => setFocused('purchaseDate')} onBlur={() => setFocused(null)}
