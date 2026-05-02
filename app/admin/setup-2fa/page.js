@@ -317,6 +317,8 @@ export default function SetupTwoFAPage() {
                 <img
                   src={qrData.qrDataUrl}
                   alt={`TOTP QR for ${user}`}
+                  width={240}
+                  height={240}
                   style={{ width: 240, height: 240, display: 'block', margin: '0 auto' }}
                 />
               </div>
